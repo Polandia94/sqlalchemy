@@ -1203,7 +1203,7 @@ ischema_names = {
 
 
 class MySQLExecutionContext(default.DefaultExecutionContext):
-    def post_exec(self):
+    def post_exec(self) -> None:
         if (
             self.isdelete
             and cast(SQLCompiler, self.compiled).effective_returning
@@ -1235,7 +1235,7 @@ class MySQLExecutionContext(default.DefaultExecutionContext):
         else:
             raise NotImplementedError()
 
-    def fire_sequence(self, seq, type_):
+    def fire_sequence(self, seq, type_) -> int:
         return self._execute_scalar(
             (
                 "select nextval(%s)"
@@ -1279,8 +1279,8 @@ class MySQLCompiler(compiler.SQLCompiler):
         )
         return f"group_concat({expr} SEPARATOR {delimeter})"
 
-    def visit_sequence(self, seq, **kw):
-        return "nextval(%s)" % self.preparer.format_sequence(seq)
+    def visit_sequence(self, sequence, **kw):
+        return "nextval(%s)" % self.preparer.format_sequence(sequence)
 
     def visit_sysdate_func(self, fn, **kw):
         return "SYSDATE()"
@@ -1595,10 +1595,10 @@ class MySQLCompiler(compiler.SQLCompiler):
 
     # override native_boolean=False behavior here, as
     # MySQL still supports native boolean
-    def visit_true(self, element, **kw):
+    def visit_true(self, expr, **kw):
         return "true"
 
-    def visit_false(self, element, **kw):
+    def visit_false(self, expr, **kw):
         return "false"
 
     def get_select_precolumns(self, select, **kw):
