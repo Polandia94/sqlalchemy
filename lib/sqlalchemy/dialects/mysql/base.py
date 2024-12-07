@@ -1038,7 +1038,7 @@ from array import array as _array
 from collections import defaultdict
 from itertools import compress
 import re
-from typing import cast
+from typing import cast, TYPE_CHECKING
 
 from . import reflection as _reflection
 from .enumerated import ENUM
@@ -1108,6 +1108,11 @@ from ...types import DATE
 from ...types import UUID
 from ...types import VARBINARY
 from ...util import topological
+
+if TYPE_CHECKING:
+    from ...engine.url import URL
+    from ...engine.interfaces import IsolationLevel, DBAPIConnection
+    from ...sql.schema import Sequence as Sequence_SchemaItem
 
 
 SET_RE = re.compile(
@@ -1234,8 +1239,8 @@ class MySQLExecutionContext(default.DefaultExecutionContext):
             return self._dbapi_connection.cursor(self.dialect._sscursor)
         else:
             raise NotImplementedError()
-
-    def fire_sequence(self, seq, type_) -> int:
+    
+    def fire_sequence(self, seq:Sequence_SchemaItem, type_:sqltypes.Integer) -> int:
         return self._execute_scalar(
             (
                 "select nextval(%s)"
@@ -2533,6 +2538,8 @@ class MySQLDialect(default.DefaultDialect):
     _backslash_escapes = True
     _server_ansiquotes = False
 
+    server_version_info: tuple[int, ...]
+
     construct_arguments = [
         (sa_schema.Table, {"*": None}),
         (sql.Update, {"limit": None}),
@@ -2575,7 +2582,7 @@ class MySQLDialect(default.DefaultDialect):
         cursor.execute("COMMIT")
         cursor.close()
 
-    def get_isolation_level(self, dbapi_connection):
+    def get_isolation_level(self, dbapi_connection:DBAPIConnection) -> IsolationLevel:
         cursor = dbapi_connection.cursor()
         if self._is_mysql and self.server_version_info >= (5, 7, 20):
             cursor.execute("SELECT @@transaction_isolation")
@@ -2595,7 +2602,7 @@ class MySQLDialect(default.DefaultDialect):
         return val.upper().replace("-", " ")
 
     @classmethod
-    def _is_mariadb_from_url(cls, url):
+    def _is_mariadb_from_url(cls, url:URL) -> bool:
         dbapi = cls.import_dbapi()
         dialect = cls(dbapi=dbapi)
 
@@ -2612,7 +2619,7 @@ class MySQLDialect(default.DefaultDialect):
         finally:
             conn.close()
 
-    def _get_server_version_info(self, connection):
+    def _get_server_version_info(self, connection) -> tuple[int, ...]:
         # get database server version info explicitly over the wire
         # to avoid proxy servers like MaxScale getting in the
         # way with their own values, see #4205
@@ -2626,8 +2633,8 @@ class MySQLDialect(default.DefaultDialect):
 
         return self._parse_server_version(val)
 
-    def _parse_server_version(self, val):
-        version = []
+    def _parse_server_version(self, val) -> tuple[int, ...]:
+        version:list[int] = []
         is_mariadb = False
 
         r = re.compile(r"[.\-+]")
@@ -3348,10 +3355,10 @@ class MySQLDialect(default.DefaultDialect):
         else:
             return row[fetch_col]
 
-    def _detect_charset(self, connection):
+    def _detect_charset(self, connection) -> str:
         raise NotImplementedError()
 
-    def _detect_casing(self, connection):
+    def _detect_casing(self, connection) -> int:
         """Sniff out identifier case sensitivity.
 
         Cached per-connection. This value can not change without a server
@@ -3499,10 +3506,10 @@ class _DecodingRow:
         self.rowproxy = rowproxy
         self.charset = self._encoding_compat.get(charset, charset)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> str:
         item = self.rowproxy[index]
         if isinstance(item, _array):
-            item = item.tostring()
+            item = item.tobytes()
 
         if self.charset and isinstance(item, bytes):
             return item.decode(self.charset)
@@ -3512,7 +3519,7 @@ class _DecodingRow:
     def __getattr__(self, attr):
         item = getattr(self.rowproxy, attr)
         if isinstance(item, _array):
-            item = item.tostring()
+            item = item.tobytes()
         if self.charset and isinstance(item, bytes):
             return item.decode(self.charset)
         else:
