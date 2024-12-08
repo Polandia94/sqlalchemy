@@ -526,7 +526,7 @@ class DefaultDialect(Dialect):
         else:
             return None
 
-    def initialize(self, connection):
+    def initialize(self, connection:Connection) -> None:
         try:
             self.server_version_info = self._get_server_version_info(
                 connection
