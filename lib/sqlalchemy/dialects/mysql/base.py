@@ -4,7 +4,6 @@
 #
 # This module is part of SQLAlchemy and is released under
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
-# mypy: ignore-errors
 
 
 r"""
@@ -1034,11 +1033,11 @@ output:
 """  # noqa
 from __future__ import annotations
 
-from array import array as _array
 from collections import defaultdict
 from itertools import compress
 import re
-from typing import cast, TYPE_CHECKING
+from typing import cast
+from typing import TYPE_CHECKING
 
 from . import reflection as _reflection
 from .enumerated import ENUM
@@ -1110,17 +1109,18 @@ from ...types import VARBINARY
 from ...util import topological
 
 if TYPE_CHECKING:
-    from ...engine.url import URL
-    from ...engine.interfaces import IsolationLevel, DBAPIConnection
-    from ...sql.schema import Sequence as Sequence_SchemaItem
-    from ...engine.base import Connection, CursorResult
-    from ...util.typing import Unpack, TupleAny
-    from ...engine.row import Row
-    from ...engine.result import _Ts
-    from ...sql.dml import ValuesBase
     from ...dialects.mysql.dml import OnDuplicateClause
-
-
+    from ...engine.base import Connection
+    from ...engine.base import CursorResult
+    from ...engine.interfaces import DBAPIConnection
+    from ...engine.interfaces import IsolationLevel
+    from ...engine.result import _Ts
+    from ...engine.row import Row
+    from ...engine.url import URL
+    from ...sql.dml import ValuesBase
+    from ...sql.schema import Sequence as Sequence_SchemaItem
+    from ...util.typing import TupleAny
+    from ...util.typing import Unpack
 
 
 SET_RE = re.compile(
@@ -1247,8 +1247,10 @@ class MySQLExecutionContext(default.DefaultExecutionContext):
             return self._dbapi_connection.cursor(self.dialect._sscursor)
         else:
             raise NotImplementedError()
-    
-    def fire_sequence(self, seq:Sequence_SchemaItem, type_:sqltypes.Integer) -> int:
+
+    def fire_sequence(
+        self, seq: Sequence_SchemaItem, type_: sqltypes.Integer
+    ) -> int:
         return self._execute_scalar(
             (
                 "select nextval(%s)"
@@ -1377,8 +1379,10 @@ class MySQLCompiler(compiler.SQLCompiler):
     def visit_json_path_getitem_op_binary(self, binary, operator, **kw):
         return self._render_json_extract_from_binary(binary, operator, **kw)
 
-    def visit_on_duplicate_key_update(self, on_duplicate:OnDuplicateClause, **kw):
-        statement:ValuesBase = self.current_executable
+    def visit_on_duplicate_key_update(
+        self, on_duplicate: OnDuplicateClause, **kw
+    ):
+        statement: ValuesBase = self.current_executable
 
         if on_duplicate._parameter_ordering:
             parameter_ordering = [
@@ -1440,7 +1444,8 @@ class MySQLCompiler(compiler.SQLCompiler):
                     else:
                         # element is not replaced
                         return None
-                #val: visitors.ExternallyTraversible
+
+                # val: visitors.ExternallyTraversible
                 val = visitors.replacement_traverse(val, {}, replace)
                 value_text = self.process(val.self_group(), use_schema=False)
 
@@ -2536,7 +2541,7 @@ class MySQLDialect(default.DefaultDialect):
     ddl_compiler = MySQLDDLCompiler
     type_compiler_cls = MySQLTypeCompiler
     ischema_names = ischema_names
-    preparer:type[MySQLIdentifierPreparer] = MySQLIdentifierPreparer
+    preparer: type[MySQLIdentifierPreparer] = MySQLIdentifierPreparer
 
     is_mariadb = False
     _mariadb_normalized_version_info = None
@@ -2591,7 +2596,9 @@ class MySQLDialect(default.DefaultDialect):
         cursor.execute("COMMIT")
         cursor.close()
 
-    def get_isolation_level(self, dbapi_connection:DBAPIConnection) -> IsolationLevel:
+    def get_isolation_level(
+        self, dbapi_connection: DBAPIConnection
+    ) -> IsolationLevel:
         cursor = dbapi_connection.cursor()
         if self._is_mysql and self.server_version_info >= (5, 7, 20):
             cursor.execute("SELECT @@transaction_isolation")
@@ -2611,7 +2618,7 @@ class MySQLDialect(default.DefaultDialect):
         return val.upper().replace("-", " ")
 
     @classmethod
-    def _is_mariadb_from_url(cls, url:URL) -> bool:
+    def _is_mariadb_from_url(cls, url: URL) -> bool:
         dbapi = cls.import_dbapi()
         dialect = cls(dbapi=dbapi)
 
@@ -2643,7 +2650,7 @@ class MySQLDialect(default.DefaultDialect):
         return self._parse_server_version(val)
 
     def _parse_server_version(self, val) -> tuple[int, ...]:
-        version:list[int] = []
+        version: list[int] = []
         is_mariadb = False
 
         r = re.compile(r"[.\-+]")
@@ -2754,13 +2761,17 @@ class MySQLDialect(default.DefaultDialect):
         else:
             return False
 
-    def _compat_fetchall(self, rp:CursorResult[Unpack[TupleAny]], charset:str|None=None):
+    def _compat_fetchall(
+        self, rp: CursorResult[Unpack[TupleAny]], charset: str | None = None
+    ):
         """Proxy result rows to smooth over MySQL-Python driver
         inconsistencies."""
 
         return [_DecodingRow(row, charset) for row in rp.fetchall()]
 
-    def _compat_fetchone(self, rp:CursorResult[Unpack[TupleAny]], charset:str|None=None):
+    def _compat_fetchone(
+        self, rp: CursorResult[Unpack[TupleAny]], charset: str | None = None
+    ):
         """Proxy a result row to smooth over MySQL-Python driver
         inconsistencies."""
 
@@ -2770,7 +2781,9 @@ class MySQLDialect(default.DefaultDialect):
         else:
             return None
 
-    def _compat_first(self, rp:CursorResult[Unpack[TupleAny]], charset:str|None=None):
+    def _compat_first(
+        self, rp: CursorResult[Unpack[TupleAny]], charset: str | None = None
+    ):
         """Proxy a result row to smooth over MySQL-Python driver
         inconsistencies."""
 
@@ -2783,7 +2796,7 @@ class MySQLDialect(default.DefaultDialect):
     def _extract_error_code(self, exception):
         raise NotImplementedError()
 
-    def _get_default_schema_name(self, connection:Connection) -> str:
+    def _get_default_schema_name(self, connection: Connection) -> str:
         return connection.exec_driver_sql("SELECT DATABASE()").scalar()
 
     @reflection.cache
@@ -3347,7 +3360,9 @@ class MySQLDialect(default.DefaultDialect):
             sql = parser._describe_to_create(table_name, columns)
         return parser.parse(sql, charset)
 
-    def _fetch_setting(self, connection:Connection, setting_name:str) -> str| None:
+    def _fetch_setting(
+        self, connection: Connection, setting_name: str
+    ) -> str | None:
         charset = self._connection_charset
 
         if self.server_version_info and self.server_version_info < (5, 6):
@@ -3367,7 +3382,7 @@ class MySQLDialect(default.DefaultDialect):
     def _detect_charset(self, connection: Connection) -> str:
         raise NotImplementedError()
 
-    def _detect_casing(self, connection:Connection) -> int:
+    def _detect_casing(self, connection: Connection) -> int:
         """Sniff out identifier case sensitivity.
 
         Cached per-connection. This value can not change without a server
@@ -3404,7 +3419,7 @@ class MySQLDialect(default.DefaultDialect):
             collations[row[0]] = row[1]
         return collations
 
-    def _detect_sql_mode(self, connection:Connection) -> None:
+    def _detect_sql_mode(self, connection: Connection) -> None:
         setting = self._fetch_setting(connection, "sql_mode")
 
         if setting is None:
@@ -3416,7 +3431,7 @@ class MySQLDialect(default.DefaultDialect):
         else:
             self._sql_mode = setting or ""
 
-    def _detect_ansiquotes(self, connection:Connection) -> None:
+    def _detect_ansiquotes(self, connection: Connection) -> None:
         """Detect and adjust for the ANSI_QUOTES sql mode."""
 
         mode = self._sql_mode
@@ -3432,7 +3447,7 @@ class MySQLDialect(default.DefaultDialect):
         self._backslash_escapes = "NO_BACKSLASH_ESCAPES" not in mode
 
     def _show_create_table(
-        self, connection, table, charset:str|None=None, full_name=None
+        self, connection, table, charset: str | None = None, full_name=None
     ):
         """Run SHOW CREATE TABLE for a ``Table``."""
 
@@ -3455,7 +3470,9 @@ class MySQLDialect(default.DefaultDialect):
             raise exc.NoSuchTableError(full_name)
         return row[1].strip()
 
-    def _describe_table(self, connection, table, charset:str|None=None, full_name=None):
+    def _describe_table(
+        self, connection, table, charset: str | None = None, full_name=None
+    ):
         """Run DESCRIBE for a ``Table`` and return processed rows."""
 
         if full_name is None:
@@ -3501,7 +3518,7 @@ class _DecodingRow:
     # sets.Set(['value']) (seriously) but thankfully that doesn't
     # seem to come up in DDL queries.
 
-    _encoding_compat: dict[str|None, str] = {
+    _encoding_compat: dict[str | None, str] = {
         "koi8r": "koi8_r",
         "koi8u": "koi8_u",
         "utf16": "utf-16-be",  # MySQL's uft16 is always bigendian
@@ -3510,7 +3527,8 @@ class _DecodingRow:
         # reproduce, possibly mariadb10.6 related
         "eucjpms": "ujis",
     }
-    def __init__(self, rowproxy:Row[Unpack[_Ts]], charset:str|None):
+
+    def __init__(self, rowproxy: Row[Unpack[_Ts]], charset: str | None):
         self.rowproxy = rowproxy
         self.charset = self._encoding_compat.get(charset, charset)
 
