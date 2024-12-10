@@ -207,7 +207,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
 
     def create_connect_args(
         self, url: "URL", _translate_args=None
-    ) -> ConnectArgsType:
+    ) -> "ConnectArgsType":
         if _translate_args is None:
             _translate_args = dict(
                 database="db", username="user", password="passwd"

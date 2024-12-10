@@ -83,9 +83,9 @@ if typing.TYPE_CHECKING:
     from .interfaces import _ExecuteOptions
     from .interfaces import _MutableCoreSingleExecuteParams
     from .interfaces import _ParamStyle
+    from .interfaces import ConnectArgsType
     from .interfaces import DBAPIConnection
     from .interfaces import IsolationLevel
-    from .interfaces import ConnectArgsType
     from .row import Row
     from .url import URL
     from ..event import _ListenerFnType
@@ -102,7 +102,6 @@ if typing.TYPE_CHECKING:
     from ..sql.type_api import _BindProcessorType
     from ..sql.type_api import _ResultProcessorType
     from ..sql.type_api import TypeEngine
-    from ..engine.url import URL
 
 # When we're handed literal SQL, ensure it's a SELECT query
 SERVER_SIDE_CURSOR_RE = re.compile(r"\s*SELECT", re.I | re.UNICODE)
@@ -526,7 +525,7 @@ class DefaultDialect(Dialect):
         else:
             return None
 
-    def initialize(self, connection:Connection) -> None:
+    def initialize(self, connection: Connection) -> None:
         try:
             self.server_version_info = self._get_server_version_info(
                 connection
@@ -632,7 +631,7 @@ class DefaultDialect(Dialect):
         # inherits the docstring from interfaces.Dialect.connect
         return self.loaded_dbapi.connect(*cargs, **cparams)
 
-    def create_connect_args(self, url:URL) -> ConnectArgsType:
+    def create_connect_args(self, url: URL) -> "ConnectArgsType":
         # inherits the docstring from interfaces.Dialect.create_connect_args
         opts = url.translate_connect_args()
         opts.update(url.query)
