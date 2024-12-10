@@ -13,7 +13,7 @@ from ... import util
 from ...sql import sqltypes
 
 
-class _NumericType:
+class _NumericCommonType:
     """Base for MySQL numeric types.
 
     This is the base both for NUMERIC as well as INTEGER, hence
@@ -26,13 +26,18 @@ class _NumericType:
         self.zerofill = zerofill
         super().__init__(**kw)
 
+
+class _NumericType(_NumericCommonType, sqltypes.Numeric):
+
     def __repr__(self):
         return util.generic_repr(
-            self, to_inspect=[_NumericType, sqltypes.Numeric]
+            self,
+            to_inspect=[_NumericType, _NumericCommonType, sqltypes.Numeric],
         )
 
 
-class _FloatType(_NumericType, sqltypes.Float):
+class _FloatType(_NumericCommonType, sqltypes.Float):
+
     def __init__(
         self,
         precision: int | None = None,
@@ -53,18 +58,19 @@ class _FloatType(_NumericType, sqltypes.Float):
 
     def __repr__(self):
         return util.generic_repr(
-            self, to_inspect=[_FloatType, _NumericType, sqltypes.Float]
+            self, to_inspect=[_FloatType, _NumericCommonType, sqltypes.Float]
         )
 
 
-class _IntegerType(_NumericType, sqltypes.Integer):
+class _IntegerType(_NumericCommonType, sqltypes.Integer):
     def __init__(self, display_width: int | None = None, **kw):
         self.display_width = display_width
         super().__init__(**kw)
 
     def __repr__(self):
         return util.generic_repr(
-            self, to_inspect=[_IntegerType, _NumericType, sqltypes.Integer]
+            self,
+            to_inspect=[_IntegerType, _NumericCommonType, sqltypes.Integer],
         )
 
 
