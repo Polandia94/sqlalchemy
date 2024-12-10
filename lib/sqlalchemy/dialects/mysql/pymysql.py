@@ -49,7 +49,6 @@ to the pymysql driver as well.
 
 """  # noqa
 
-from typing import Any
 from typing import TYPE_CHECKING
 
 from .mysqldb import MySQLDialect_mysqldb
@@ -57,6 +56,7 @@ from ...util import langhelpers
 
 if TYPE_CHECKING:
     from sqlalchemy import URL
+    from ...engine.interfaces import ConnectArgsType
 
 
 class MySQLDialect_pymysql(MySQLDialect_mysqldb):
@@ -116,7 +116,7 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
 
     def create_connect_args(
         self, url: "URL", _translate_args=None
-    ) -> list[list | dict[str, Any]]:
+    ) -> "ConnectArgsType":
         if _translate_args is None:
             _translate_args = dict(username="user")
         return super().create_connect_args(

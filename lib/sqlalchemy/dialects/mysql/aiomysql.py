@@ -29,6 +29,7 @@ This dialect should normally be used only with the
 
 """  # noqa
 
+from types import ModuleType
 from typing import Any
 from typing import TYPE_CHECKING
 
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy import URL
     from ...connectors.asyncio import AsyncIODBAPIConnection
+    from ...engine.interfaces import ConnectArgsType
 
 
 class AsyncAdapt_aiomysql_cursor(AsyncAdapt_dbapi_cursor):
@@ -78,12 +80,12 @@ class AsyncAdapt_aiomysql_connection(AsyncAdapt_dbapi_connection):
     _ss_cursor_cls = AsyncAdapt_aiomysql_ss_cursor
     _connection: "AiomysqlConnection"
 
-    def ping(self, reconnect) -> None:
+    def ping(self, reconnect: bool) -> None:
         assert not reconnect
-        return await_(self._connection.ping(reconnect))
+        return await_(self._connection.ping(reconnect))  # type: ignore[no-any-return]  # noqa: E501
 
     def character_set_name(self) -> str | None:
-        return self._connection.character_set_name()
+        return self._connection.character_set_name()  # type: ignore[no-any-return]  # noqa: E501
 
     def autocommit(self, value: Any) -> None:
         await_(self._connection.autocommit(value))
@@ -97,9 +99,9 @@ class AsyncAdapt_aiomysql_connection(AsyncAdapt_dbapi_connection):
 
 
 class AsyncAdapt_aiomysql_dbapi:
-    def __init__(self, aiomysql, pymysql):
-        self.aiomysql = aiomysql
-        self.pymysql = pymysql
+    def __init__(self, aiomysql: ModuleType, pymysql: ModuleType):
+        self.aiomysql: ModuleType = aiomysql
+        self.pymysql: ModuleType = pymysql
         self.paramstyle = "format"
         self._init_dbapi_attributes()
         self.Cursor, self.SSCursor = self._init_cursors_subclasses()
@@ -130,7 +132,7 @@ class AsyncAdapt_aiomysql_dbapi:
         ):
             setattr(self, name, getattr(self.pymysql, name))
 
-    def connect(self, *arg, **kw) -> AsyncAdapt_aiomysql_connection:
+    def connect(self, *arg: Any, **kw: Any) -> AsyncAdapt_aiomysql_connection:
         creator_fn = kw.pop("async_creator_fn", self.aiomysql.connect)
 
         return AsyncAdapt_aiomysql_connection(
@@ -142,12 +144,12 @@ class AsyncAdapt_aiomysql_dbapi:
         self,
     ) -> tuple["AiomysqlCursor", "AiomysqlSSCursor"]:
         # suppress unconditional warning emitted by aiomysql
-        class Cursor(self.aiomysql.Cursor):
-            async def _show_warnings(self, conn):
+        class Cursor(self.aiomysql.Cursor):  # type: ignore[misc, name-defined]
+            async def _show_warnings(self, conn: "AiomysqlConnection") -> None:
                 pass
 
-        class SSCursor(self.aiomysql.SSCursor):
-            async def _show_warnings(self, conn):
+        class SSCursor(self.aiomysql.SSCursor):  # type: ignore[misc, name-defined]   # noqa: E501
+            async def _show_warnings(self, conn: "AiomysqlConnection") -> None:
                 pass
 
         return Cursor, SSCursor
@@ -164,7 +166,7 @@ class MySQLDialect_aiomysql(MySQLDialect_pymysql):
     has_terminate = True
 
     @classmethod
-    def import_dbapi(cls) -> AsyncAdapt_aiomysql_dbapi:
+    def import_dbapi(cls) -> AsyncAdapt_aiomysql_dbapi:  # type: ignore[override]  # noqa: E501
         return AsyncAdapt_aiomysql_dbapi(
             __import__("aiomysql"), __import__("pymysql")
         )
@@ -172,7 +174,10 @@ class MySQLDialect_aiomysql(MySQLDialect_pymysql):
     def do_terminate(self, dbapi_connection: "AiomysqlPool") -> None:
         dbapi_connection.terminate()
 
-    def create_connect_args(self, url: "URL") -> list[list | dict[str, Any]]:
+    # _translate_args should not be defined here, is only for super class.
+    def create_connect_args(
+        self, url: "URL", _translate_args: Any = None
+    ) -> "ConnectArgsType":
         return super().create_connect_args(
             url, _translate_args=dict(username="user", database="db")
         )
@@ -180,7 +185,7 @@ class MySQLDialect_aiomysql(MySQLDialect_pymysql):
     def is_disconnect(
         self, e: Exception, connection: Any, cursor: Any
     ) -> bool:
-        if super().is_disconnect(e, connection, cursor):
+        if super().is_disconnect(e, connection, cursor):  # type: ignore[no-untyped-call]  # noqa: E501
             return True
         else:
             str_e = str(e).lower()
@@ -191,7 +196,7 @@ class MySQLDialect_aiomysql(MySQLDialect_pymysql):
 
         return CLIENT.FOUND_ROWS
 
-    def get_driver_connection(
+    def get_driver_connection(  # type: ignore[override]
         self, connection: AsyncAdapt_aiomysql_connection
     ) -> "AiomysqlConnection":
         return connection._connection
