@@ -49,14 +49,15 @@ to the pymysql driver as well.
 
 """  # noqa
 
+from typing import Any
 from typing import TYPE_CHECKING
 
 from .mysqldb import MySQLDialect_mysqldb
 from ...util import langhelpers
 
 if TYPE_CHECKING:
-    from sqlalchemy import URL
     from ...engine.interfaces import ConnectArgsType
+    from ...engine.url import URL
 
 
 class MySQLDialect_pymysql(MySQLDialect_mysqldb):
@@ -123,7 +124,9 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
             url, _translate_args=_translate_args
         )
 
-    def is_disconnect(self, e, connection, cursor):
+    def is_disconnect(
+        self, e: Exception, connection: Any, cursor: Any
+    ) -> bool:
         if super().is_disconnect(e, connection, cursor):
             return True
         elif isinstance(e, self.dbapi.Error):

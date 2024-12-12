@@ -97,8 +97,10 @@ if typing.TYPE_CHECKING:
     from .base import _AmbiguousTableNameMap
     from .base import CompileState
     from .cache_key import CacheKey
+    from .ddl import Constraint
     from .ddl import ExecutableDDLElement
     from .dml import Insert
+    from .dml import Update
     from .dml import UpdateBase
     from .dml import ValuesBase
     from .elements import _truncated_label
@@ -118,6 +120,7 @@ if typing.TYPE_CHECKING:
     from .selectable import SelectState
     from .type_api import _BindProcessorType
     from ..engine.cursor import CursorResultMetaData
+    from ..engine.default import DefaultDialect
     from ..engine.interfaces import _CoreSingleExecuteParams
     from ..engine.interfaces import _DBAPIAnyExecuteParams
     from ..engine.interfaces import _DBAPIMultiExecuteParams
@@ -2739,13 +2742,13 @@ class SQLCompiler(Compiled):
     def visit_null(self, expr, **kw):
         return "NULL"
 
-    def visit_true(self, expr, **kw):
+    def visit_true(self, expr, **kw) -> str:
         if self.dialect.supports_native_boolean:
             return "true"
         else:
             return "1"
 
-    def visit_false(self, expr, **kw):
+    def visit_false(self, expr, **kw) -> str:
         if self.dialect.supports_native_boolean:
             return "false"
         else:
@@ -2973,7 +2976,7 @@ class SQLCompiler(Compiled):
             % self.dialect.name
         )
 
-    def function_argspec(self, func, **kwargs):
+    def function_argspec(self, func: functions.GenericFunction, **kwargs):
         return func.clause_expr._compiler_dispatch(self, **kwargs)
 
     def visit_compound_select(
@@ -3437,8 +3440,12 @@ class SQLCompiler(Compiled):
         )
 
     def _generate_generic_binary(
-        self, binary, opstring, eager_grouping=False, **kw
-    ):
+        self,
+        binary: elements.BinaryExpression,
+        opstring: str,
+        eager_grouping: bool = False,
+        **kw: Any,
+    ) -> str:
         _in_operator_expression = kw.get("_in_operator_expression", False)
 
         kw["_in_operator_expression"] = True
@@ -3607,19 +3614,19 @@ class SQLCompiler(Compiled):
             **kw,
         )
 
-    def visit_regexp_match_op_binary(self, binary, operator, **kw):
+    def visit_regexp_match_op_binary(self, binary, operator, **kw) -> str:
         raise exc.CompileError(
             "%s dialect does not support regular expressions"
             % self.dialect.name
         )
 
-    def visit_not_regexp_match_op_binary(self, binary, operator, **kw):
+    def visit_not_regexp_match_op_binary(self, binary, operator, **kw) -> str:
         raise exc.CompileError(
             "%s dialect does not support regular expressions"
             % self.dialect.name
         )
 
-    def visit_regexp_replace_op_binary(self, binary, operator, **kw):
+    def visit_regexp_replace_op_binary(self, binary, operator, **kw) -> str:
         raise exc.CompileError(
             "%s dialect does not support regular expression replacements"
             % self.dialect.name
@@ -3826,7 +3833,7 @@ class SQLCompiler(Compiled):
         else:
             return self.render_literal_value(value, bindparam.type)
 
-    def render_literal_value(self, value, type_):
+    def render_literal_value(self, value, type_: sqltypes.String) -> str:
         """Render the value of a bind parameter as a quoted literal.
 
         This is used for statement sections that do not accept bind parameters
@@ -4587,7 +4594,7 @@ class SQLCompiler(Compiled):
     def get_select_hint_text(self, byfroms):
         return None
 
-    def get_from_hint_text(self, table, text):
+    def get_from_hint_text(self, table, text) -> str | None:
         return None
 
     def get_crud_hint_text(self, table, text):
@@ -5072,7 +5079,7 @@ class SQLCompiler(Compiled):
         else:
             return "WITH"
 
-    def get_select_precolumns(self, select, **kw) -> str:
+    def get_select_precolumns(self, select: Select, **kw) -> str:
         """Called when building a ``SELECT`` statement, position is just
         before column list.
 
@@ -6098,7 +6105,7 @@ class SQLCompiler(Compiled):
 
         return text
 
-    def update_limit_clause(self, update_stmt):
+    def update_limit_clause(self, update_stmt) -> str | None:
         """Provide a hook for MySQL to add LIMIT to the UPDATE"""
         return None
 
@@ -6126,7 +6133,7 @@ class SQLCompiler(Compiled):
             "criteria within UPDATE"
         )
 
-    def visit_update(self, update_stmt, visiting_cte=None, **kw):
+    def visit_update(self, update_stmt: "Update", visiting_cte=None, **kw):
         compile_state = update_stmt._compile_state_factory(
             update_stmt, self, **kw
         )
@@ -7325,7 +7332,7 @@ class IdentifierPreparer:
 
     def __init__(
         self,
-        dialect,
+        dialect: DefaultDialect,
         initial_quote='"',
         final_quote=None,
         escape_quote='"',
@@ -7625,7 +7632,9 @@ class IdentifierPreparer:
         return ident
 
     @util.preload_module("sqlalchemy.sql.naming")
-    def format_constraint(self, constraint, _alembic_quote=True):
+    def format_constraint(
+        self, constraint: Constraint, _alembic_quote=True
+    ) -> str | None:
         naming = util.preloaded.sql_naming
 
         if constraint.name is _NONE_NAME:

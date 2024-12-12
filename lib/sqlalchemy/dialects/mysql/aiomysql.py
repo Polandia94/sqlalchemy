@@ -46,9 +46,9 @@ if TYPE_CHECKING:
     from aiomysql.cursors import SSCursor as AiomysqlSSCursor
     from aiomysql.pool import Pool as AiomysqlPool
 
-    from sqlalchemy import URL
     from ...connectors.asyncio import AsyncIODBAPIConnection
     from ...engine.interfaces import ConnectArgsType
+    from ...engine.url import URL
 
 
 class AsyncAdapt_aiomysql_cursor(AsyncAdapt_dbapi_cursor):
@@ -185,7 +185,7 @@ class MySQLDialect_aiomysql(MySQLDialect_pymysql):
     def is_disconnect(
         self, e: Exception, connection: Any, cursor: Any
     ) -> bool:
-        if super().is_disconnect(e, connection, cursor):  # type: ignore[no-untyped-call]  # noqa: E501
+        if super().is_disconnect(e, connection, cursor):
             return True
         else:
             str_e = str(e).lower()
