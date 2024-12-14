@@ -87,17 +87,23 @@ The mysqldb dialect supports server-side cursors. See :ref:`mysql_ss_cursors`.
 """
 
 import re
+from types import ModuleType
+from typing import Any
+from typing import Callable
+from typing import Iterable
+from typing import Literal
+from typing import LiteralString
 from typing import TYPE_CHECKING
 
 from .base import MySQLCompiler
 from .base import MySQLDialect
 from .base import MySQLExecutionContext
 from .base import MySQLIdentifierPreparer
-from .base import TEXT
-from ... import sql
 from ... import util
 
 if TYPE_CHECKING:
+    import MySQLdb
+
     from sqlalchemy import URL
     from ...engine.interfaces import ConnectArgsType
 
@@ -125,7 +131,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
     preparer = MySQLIdentifierPreparer
     server_version_info: tuple[int, ...]
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any):
         super().__init__(**kwargs)
         self._mysql_dbapi_version = (
             self._parse_dbapi_version(self.dbapi.__version__)
@@ -133,7 +139,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
             else (0, 0, 0)
         )
 
-    def _parse_dbapi_version(self, version):
+    def _parse_dbapi_version(self, version) -> tuple[int, ...]:
         m = re.match(r"(\d+)\.(\d+)(?:\.(\d+))?", version)
         if m:
             return tuple(int(x) for x in m.group(1, 2, 3) if x is not None)
@@ -141,7 +147,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
             return (0, 0, 0)
 
     @util.langhelpers.memoized_property
-    def supports_server_side_cursors(self):
+    def supports_server_side_cursors(self) -> bool:
         try:
             cursors = __import__("MySQLdb.cursors").cursors
             self._sscursor = cursors.SSCursor
@@ -150,13 +156,13 @@ class MySQLDialect_mysqldb(MySQLDialect):
             return False
 
     @classmethod
-    def import_dbapi(cls):
+    def import_dbapi(cls) -> ModuleType:
         return __import__("MySQLdb")
 
-    def on_connect(self):
+    def on_connect(self) -> Callable[["MySQLdb.Connection"], None]:
         super_ = super().on_connect()
 
-        def on_connect(conn):
+        def on_connect(conn: "MySQLdb.Connection") -> None:
             if super_ is not None:
                 super_(conn)
 
@@ -169,41 +175,20 @@ class MySQLDialect_mysqldb(MySQLDialect):
 
         return on_connect
 
-    def do_ping(self, dbapi_connection):
+    def do_ping(self, dbapi_connection: "MySQLdb.Connection") -> Literal[True]:
         dbapi_connection.ping()
         return True
 
-    def do_executemany(self, cursor, statement, parameters, context=None):
+    def do_executemany(
+        self,
+        cursor: "MySQLdb.cursors.Cursor",
+        statement: LiteralString,
+        parameters: Iterable[Any],
+        context: MySQLExecutionContext_mysqldb | None = None,
+    ) -> None:
         rowcount = cursor.executemany(statement, parameters)
         if context is not None:
             context._rowcount = rowcount
-
-    def _check_unicode_returns(self, connection):
-        # work around issue fixed in
-        # https://github.com/farcepest/MySQLdb1/commit/cd44524fef63bd3fcb71947392326e9742d520e8
-        # specific issue w/ the utf8mb4_bin collation and unicode returns
-
-        collation = connection.exec_driver_sql(
-            "show collation where %s = 'utf8mb4' and %s = 'utf8mb4_bin'"
-            % (
-                self.identifier_preparer.quote("Charset"),
-                self.identifier_preparer.quote("Collation"),
-            )
-        ).scalar()
-        has_utf8mb4_bin = self.server_version_info > (5,) and collation
-        if has_utf8mb4_bin:
-            additional_tests = [
-                sql.collate(
-                    sql.cast(
-                        sql.literal_column("'test collated returns'"),
-                        TEXT(charset="utf8mb4"),
-                    ),
-                    "utf8mb4_bin",
-                )
-            ]
-        else:
-            additional_tests = []
-        return super()._check_unicode_returns(connection, additional_tests)
 
     def create_connect_args(
         self, url: "URL", _translate_args=None

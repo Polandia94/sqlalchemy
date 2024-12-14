@@ -49,7 +49,9 @@ to the pymysql driver as well.
 
 """  # noqa
 
+from types import ModuleType
 from typing import Any
+from typing import Literal
 from typing import TYPE_CHECKING
 
 from .mysqldb import MySQLDialect_mysqldb
@@ -67,7 +69,7 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
     description_encoding = None
 
     @langhelpers.memoized_property
-    def supports_server_side_cursors(self):
+    def supports_server_side_cursors(self) -> bool:
         try:
             cursors = __import__("pymysql.cursors").cursors
             self._sscursor = cursors.SSCursor
@@ -76,11 +78,11 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
             return False
 
     @classmethod
-    def import_dbapi(cls):
+    def import_dbapi(cls) -> ModuleType:
         return __import__("pymysql")
 
     @langhelpers.memoized_property
-    def _send_false_to_ping(self):
+    def _send_false_to_ping(self) -> bool:
         """determine if pymysql has deprecated, changed the default of,
         or removed the 'reconnect' argument of connection.ping().
 
@@ -107,7 +109,7 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
                     not insp.defaults or insp.defaults[0] is not False
                 )
 
-    def do_ping(self, dbapi_connection):
+    def do_ping(self, dbapi_connection) -> Literal[True]:
         if self._send_false_to_ping:
             dbapi_connection.ping(False)
         else:
