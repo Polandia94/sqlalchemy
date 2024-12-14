@@ -1119,6 +1119,10 @@ if TYPE_CHECKING:
     from ...engine.interfaces import DBAPIConnection
     from ...engine.interfaces import DBAPICursor
     from ...engine.interfaces import IsolationLevel
+    from ...engine.interfaces import ReflectedForeignKeyConstraint
+    from ...engine.interfaces import ReflectedCheckConstraint
+    from ...engine.interfaces import ReflectedTableComment
+    from ...engine.interfaces import ReflectedIndex
     from ...engine.result import _Ts
     from ...engine.row import Row
     from ...engine.url import URL
@@ -2597,7 +2601,7 @@ class MariaDBIdentifierPreparer(MySQLIdentifierPreparer):
 
 
 @log.class_logger
-class MySQLDialect(default.DefaultDialect):
+class MySQLDialect(default.DefaultDialect, log.Identified):
     """Details of the MySQL dialect.
     Not used directly in application code.
     """
@@ -3187,13 +3191,13 @@ class MySQLDialect(default.DefaultDialect):
         return ReflectionDefaults.pk_constraint()
 
     @reflection.cache
-    def get_foreign_keys(self, connection, table_name, schema=None, **kw: Any):
+    def get_foreign_keys(self, connection: Connection, table_name:str, schema:str|None =None, **kw: Any) -> list["ReflectedForeignKeyConstraint"]:
         parsed_state = self._parsed_state_or_create(
             connection, table_name, schema, **kw
         )
         default_schema = None
 
-        fkeys = []
+        fkeys: list["ReflectedForeignKeyConstraint"] = []
 
         for spec in parsed_state.fk_constraints:
             ref_name = spec["table"][-1]
@@ -3213,7 +3217,7 @@ class MySQLDialect(default.DefaultDialect):
                 if spec.get(opt, False) not in ("NO ACTION", None):
                     con_kw[opt] = spec[opt]
 
-            fkey_d = {
+            fkey_d: "ReflectedForeignKeyConstraint" = {
                 "name": spec["name"],
                 "constrained_columns": loc_names,
                 "referred_schema": ref_schema,
@@ -3228,7 +3232,7 @@ class MySQLDialect(default.DefaultDialect):
 
         return fkeys if fkeys else ReflectionDefaults.foreign_keys()
 
-    def _correct_for_mysql_bugs_88718_96365(self, fkeys, connection):
+    def _correct_for_mysql_bugs_88718_96365(self, fkeys: list["ReflectedForeignKeyConstraint"], connection: Connection):
         # Foreign key is always in lower case (MySQL 8.0)
         # https://bugs.mysql.com/bug.php?id=88718
         # issue #4344 for SQLAlchemy
@@ -3330,13 +3334,13 @@ class MySQLDialect(default.DefaultDialect):
 
     @reflection.cache
     def get_check_constraints(
-        self, connection, table_name, schema=None, **kw: Any
-    ):
+        self, connection: Connection, table_name:str, schema:str|None=None, **kw: Any
+    ) -> list["ReflectedCheckConstraint"]:
         parsed_state = self._parsed_state_or_create(
             connection, table_name, schema, **kw
         )
 
-        cks = [
+        cks:list["ReflectedCheckConstraint"] = [
             {"name": spec["name"], "sqltext": spec["sqltext"]}
             for spec in parsed_state.ck_constraints
         ]
@@ -3345,8 +3349,8 @@ class MySQLDialect(default.DefaultDialect):
 
     @reflection.cache
     def get_table_comment(
-        self, connection, table_name, schema=None, **kw: Any
-    ):
+        self, connection: Connection, table_name:str, schema:str|None=None, **kw: Any
+    ) -> "ReflectedTableComment":
         parsed_state = self._parsed_state_or_create(
             connection, table_name, schema, **kw
         )
@@ -3357,7 +3361,9 @@ class MySQLDialect(default.DefaultDialect):
             return ReflectionDefaults.table_comment()
 
     @reflection.cache
-    def get_indexes(self, connection, table_name, schema=None, **kw: Any):
+    def get_indexes(
+        self, connection: Connection, table_name:str, schema:str|None=None, **kw: Any
+    ) -> list["ReflectedIndex"]:
         parsed_state = self._parsed_state_or_create(
             connection, table_name, schema, **kw
         )

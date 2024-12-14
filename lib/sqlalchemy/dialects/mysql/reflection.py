@@ -31,7 +31,7 @@ class ReflectedState:
 
 
 @log.class_logger
-class MySQLTableDefinitionParser:
+class MySQLTableDefinitionParser(log.Identified):
     """Parses the results of a SHOW CREATE TABLE statement."""
 
     def __init__(self, dialect, preparer):
@@ -325,7 +325,7 @@ class MySQLTableDefinitionParser:
         col_d.update(col_kw)
         state.columns.append(col_d)
 
-    def _describe_to_create(self, table_name, columns):
+    def _describe_to_create(self, table_name:str, columns):
         """Re-format DESCRIBE output as a SHOW CREATE TABLE string.
 
         DESCRIBE is a much simpler reflection and is sufficient for
