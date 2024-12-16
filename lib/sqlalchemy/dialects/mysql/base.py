@@ -487,7 +487,14 @@ available.
 
 * UPDATE with LIMIT::
 
-    update(..., mysql_limit=10, mariadb_limit=10)
+    update(...).with_dialect_options(mysql_limit=10, mariadb_limit=10)
+
+* DELETE
+  with LIMIT::
+
+    delete(...).with_dialect_options(mysql_limit=10, mariadb_limit=10)
+
+  .. versionadded:: 2.0.37 Added delete with limit
 
 * optimizer hints, use :meth:`_expression.Select.prefix_with` and
   :meth:`_query.Query.prefix_with`::
@@ -1784,8 +1791,15 @@ class MySQLCompiler(compiler.SQLCompiler):
 
     def update_limit_clause(self, update_stmt: "Update") -> str | None:
         limit = update_stmt.kwargs.get("%s_limit" % self.dialect.name, None)
-        if limit:
-            return "LIMIT %s" % limit
+        if limit is not None:
+            return f"LIMIT {int(limit)}"
+        else:
+            return None
+
+    def delete_limit_clause(self, delete_stmt):
+        limit = delete_stmt.kwargs.get("%s_limit" % self.dialect.name, None)
+        if limit is not None:
+            return f"LIMIT {int(limit)}"
         else:
             return None
 
@@ -2681,6 +2695,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
     construct_arguments = [
         (sa_schema.Table, {"*": None}),
         (sql.Update, {"limit": None}),
+        (sql.Delete, {"limit": None}),
         (sa_schema.PrimaryKeyConstraint, {"using": None}),
         (
             sa_schema.Index,
