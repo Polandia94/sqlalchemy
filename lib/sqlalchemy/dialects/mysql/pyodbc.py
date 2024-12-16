@@ -45,6 +45,8 @@ Pass through exact pyodbc connection string::
 """  # noqa
 
 import re
+from typing import Callable
+from typing import TYPE_CHECKING
 
 from .base import MySQLDialect
 from .base import MySQLExecutionContext
@@ -53,6 +55,9 @@ from ... import exc
 from ... import util
 from ...connectors.pyodbc import PyODBCConnector
 from ...sql.sqltypes import Time
+
+if TYPE_CHECKING:
+    import pyodbc
 
 
 class _pyodbcTIME(TIME):
@@ -109,18 +114,20 @@ class MySQLDialect_pyodbc(PyODBCConnector, MySQLDialect):
     def _get_server_version_info(self, connection):
         return MySQLDialect._get_server_version_info(self, connection)
 
-    def _extract_error_code(self, exception):
+    def _extract_error_code(self, exception: Exception) -> None | int:
         m = re.compile(r"\((\d+)\)").search(str(exception.args))
-        c = m.group(1)
+        if m is None:
+            return None
+        c: str | None = m.group(1)
         if c:
             return int(c)
         else:
             return None
 
-    def on_connect(self):
+    def on_connect(self) -> Callable[["pyodbc.Connection"], None]:
         super_ = super().on_connect()
 
-        def on_connect(conn):
+        def on_connect(conn: "pyodbc.Connection") -> None:
             if super_ is not None:
                 super_(conn)
 

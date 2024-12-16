@@ -563,7 +563,7 @@ class DefaultDialect(Dialect):
                 % (self.label_length, self.max_identifier_length)
             )
 
-    def on_connect(self):
+    def on_connect(self) -> Callable[[Any], None] | None:
         # inherits the docstring from interfaces.Dialect.on_connect
         return None
 

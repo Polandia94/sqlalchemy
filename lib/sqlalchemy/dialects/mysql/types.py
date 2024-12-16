@@ -7,10 +7,17 @@
 
 
 import datetime
+from typing import Any
+from typing import Iterable
+from typing import TYPE_CHECKING
 
 from ... import exc
 from ... import util
 from ...sql import sqltypes
+
+if TYPE_CHECKING:
+    from ...engine.interfaces import Dialect
+    from ...sql.type_api import _ResultProcessorType
 
 
 class _NumericCommonType:
@@ -414,7 +421,9 @@ class BIT(sqltypes.TypeEngine):
         """
         self.length = length
 
-    def result_processor(self, dialect, coltype):
+    def result_processor(
+        self, dialect: "Dialect", coltype: object
+    ) -> "None | _ResultProcessorType[Any]":
         """Convert a MySQL's 64 bit, variable length binary string to a long.
 
         TODO: this is MySQL-db, pyodbc specific.  OurSQL and mysqlconnector
@@ -422,12 +431,10 @@ class BIT(sqltypes.TypeEngine):
 
         """
 
-        def process(value):
+        def process(value: None | Iterable[int]) -> None | int:
             if value is not None:
                 v = 0
                 for i in value:
-                    if not isinstance(i, int):
-                        i = ord(i)  # convert byte to int on Python 2
                     v = v << 8 | i
                 return v
             return value
