@@ -102,6 +102,8 @@ if typing.TYPE_CHECKING:
     from ..sql.type_api import _BindProcessorType
     from ..sql.type_api import _ResultProcessorType
     from ..sql.type_api import TypeEngine
+    from ..util.langhelpers import generic_fn_descriptor
+
 
 # When we're handed literal SQL, ensure it's a SELECT query
 SERVER_SIDE_CURSOR_RE = re.compile(r"\s*SELECT", re.I | re.UNICODE)
@@ -246,7 +248,7 @@ class DefaultDialect(Dialect):
 
     supports_is_distinct_from = True
 
-    supports_server_side_cursors = False
+    supports_server_side_cursors: "generic_fn_descriptor[bool] | bool" = False
 
     server_side_cursors = False
 

@@ -1119,10 +1119,12 @@ if TYPE_CHECKING:
     from ...engine.interfaces import DBAPIConnection
     from ...engine.interfaces import DBAPICursor
     from ...engine.interfaces import IsolationLevel
-    from ...engine.interfaces import ReflectedForeignKeyConstraint
     from ...engine.interfaces import ReflectedCheckConstraint
-    from ...engine.interfaces import ReflectedTableComment
+    from ...engine.interfaces import ReflectedColumn
+    from ...engine.interfaces import ReflectedForeignKeyConstraint
     from ...engine.interfaces import ReflectedIndex
+    from ...engine.interfaces import ReflectedPrimaryKeyConstraint
+    from ...engine.interfaces import ReflectedTableComment
     from ...engine.result import _Ts
     from ...engine.row import Row
     from ...engine.url import URL
@@ -2665,7 +2667,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
     ischema_names = ischema_names
     preparer: type[MySQLIdentifierPreparer] = MySQLIdentifierPreparer
 
-    is_mariadb = False
+    is_mariadb: bool = False
     _mariadb_normalized_version_info = None
 
     # default SQL compilation settings -
@@ -3065,6 +3067,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
     def _warn_for_known_db_issues(self) -> None:
         if self.is_mariadb:
             mdb_version = self._mariadb_normalized_version_info
+            assert mdb_version is not None
             if mdb_version > (10, 2) and mdb_version < (10, 2, 9):
                 util.warn(
                     "MariaDB %r before 10.2.9 has known issues regarding "
@@ -3088,7 +3091,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
             return self.server_version_info >= (8, 0, 17)
 
     @property
-    def _support_default_function(self):
+    def _support_default_function(self) -> bool:
         if not self.server_version_info:
             return False
         elif self.is_mariadb:
@@ -3099,32 +3102,34 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
             return self.server_version_info >= (8, 0, 13)
 
     @property
-    def _is_mariadb(self):
+    def _is_mariadb(self) -> bool:
         return self.is_mariadb
 
     @property
-    def _is_mysql(self):
+    def _is_mysql(self) -> bool:
         return not self.is_mariadb
 
     @property
-    def _is_mariadb_102(self):
+    def _is_mariadb_102(self) -> bool:
         return self.is_mariadb and self._mariadb_normalized_version_info > (
             10,
             2,
         )
 
     @reflection.cache
-    def get_schema_names(self, connection, **kw: Any):
+    def get_schema_names(self, connection: Connection, **kw: Any) -> list[str]:
         rp = connection.exec_driver_sql("SHOW schemas")
         return [r[0] for r in rp]
 
     @reflection.cache
-    def get_table_names(self, connection, schema=None, **kw: Any):
+    def get_table_names(
+        self, connection: Connection, schema: str | None = None, **kw: Any
+    ) -> list[str]:
         """Return a Unicode SHOW TABLES from a given schema."""
         if schema is not None:
-            current_schema = schema
+            current_schema: str = schema
         else:
-            current_schema = self.default_schema_name
+            current_schema = self.default_schema_name  # type: ignore
 
         charset = self._connection_charset
 
@@ -3140,9 +3145,12 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         ]
 
     @reflection.cache
-    def get_view_names(self, connection, schema=None, **kw: Any):
+    def get_view_names(
+        self, connection: Connection, schema: str | None = None, **kw: Any
+    ) -> list[str]:
         if schema is None:
             schema = self.default_schema_name
+        assert schema is not None
         charset = self._connection_charset
         rp = connection.exec_driver_sql(
             "SHOW FULL TABLES FROM %s"
@@ -3156,8 +3164,12 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     @reflection.cache
     def get_table_options(
-        self, connection, table_name, schema=None, **kw: Any
-    ):
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kw: Any,
+    ) -> dict[str, Any]:
         parsed_state = self._parsed_state_or_create(
             connection, table_name, schema, **kw
         )
@@ -3167,7 +3179,13 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
             return ReflectionDefaults.table_options()
 
     @reflection.cache
-    def get_columns(self, connection, table_name, schema=None, **kw: Any):
+    def get_columns(
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kw: Any,
+    ) -> list["ReflectedColumn"]:
         parsed_state = self._parsed_state_or_create(
             connection, table_name, schema, **kw
         )
@@ -3178,8 +3196,12 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     @reflection.cache
     def get_pk_constraint(
-        self, connection, table_name, schema=None, **kw: Any
-    ):
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kw: Any,
+    ) -> "ReflectedPrimaryKeyConstraint":
         parsed_state = self._parsed_state_or_create(
             connection, table_name, schema, **kw
         )
@@ -3191,7 +3213,13 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         return ReflectionDefaults.pk_constraint()
 
     @reflection.cache
-    def get_foreign_keys(self, connection: Connection, table_name:str, schema:str|None =None, **kw: Any) -> list["ReflectedForeignKeyConstraint"]:
+    def get_foreign_keys(
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kw: Any,
+    ) -> list["ReflectedForeignKeyConstraint"]:
         parsed_state = self._parsed_state_or_create(
             connection, table_name, schema, **kw
         )
@@ -3232,7 +3260,11 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
         return fkeys if fkeys else ReflectionDefaults.foreign_keys()
 
-    def _correct_for_mysql_bugs_88718_96365(self, fkeys: list["ReflectedForeignKeyConstraint"], connection: Connection):
+    def _correct_for_mysql_bugs_88718_96365(
+        self,
+        fkeys: list["ReflectedForeignKeyConstraint"],
+        connection: Connection,
+    ):
         # Foreign key is always in lower case (MySQL 8.0)
         # https://bugs.mysql.com/bug.php?id=88718
         # issue #4344 for SQLAlchemy
@@ -3334,13 +3366,17 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     @reflection.cache
     def get_check_constraints(
-        self, connection: Connection, table_name:str, schema:str|None=None, **kw: Any
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kw: Any,
     ) -> list["ReflectedCheckConstraint"]:
         parsed_state = self._parsed_state_or_create(
             connection, table_name, schema, **kw
         )
 
-        cks:list["ReflectedCheckConstraint"] = [
+        cks: list["ReflectedCheckConstraint"] = [
             {"name": spec["name"], "sqltext": spec["sqltext"]}
             for spec in parsed_state.ck_constraints
         ]
@@ -3349,7 +3385,11 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     @reflection.cache
     def get_table_comment(
-        self, connection: Connection, table_name:str, schema:str|None=None, **kw: Any
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kw: Any,
     ) -> "ReflectedTableComment":
         parsed_state = self._parsed_state_or_create(
             connection, table_name, schema, **kw
@@ -3362,7 +3402,11 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     @reflection.cache
     def get_indexes(
-        self, connection: Connection, table_name:str, schema:str|None=None, **kw: Any
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kw: Any,
     ) -> list["ReflectedIndex"]:
         parsed_state = self._parsed_state_or_create(
             connection, table_name, schema, **kw
@@ -3454,7 +3498,11 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         return sql
 
     def _parsed_state_or_create(
-        self, connection, table_name, schema=None, **kw
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kw: Any,
     ):
         return self._setup_parser(
             connection,

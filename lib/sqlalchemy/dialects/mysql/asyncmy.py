@@ -165,7 +165,7 @@ class MySQLDialect_asyncmy(MySQLDialect_pymysql):
     driver = "asyncmy"
     supports_statement_cache = True
 
-    supports_server_side_cursors = True
+    supports_server_side_cursors = True  # type: ignore[assignment]
     _sscursor = AsyncAdapt_asyncmy_ss_cursor
 
     is_async = True

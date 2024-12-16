@@ -58,6 +58,8 @@ from .mysqldb import MySQLDialect_mysqldb
 from ...util import langhelpers
 
 if TYPE_CHECKING:
+    import pymysql
+
     from ...engine.interfaces import ConnectArgsType
     from ...engine.url import URL
 
@@ -67,9 +69,10 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
     supports_statement_cache = True
 
     description_encoding = None
+    dbapi: "pymysql"
 
     @langhelpers.memoized_property
-    def supports_server_side_cursors(self) -> bool:
+    def supports_server_side_cursors(self) -> bool:  # type: ignore[override]
         try:
             cursors = __import__("pymysql.cursors").cursors
             self._sscursor = cursors.SSCursor
@@ -139,7 +142,7 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
         else:
             return False
 
-    def _extract_error_code(self, exception):
+    def _extract_error_code(self, exception: Exception) -> Any:
         if isinstance(exception.args[0], Exception):
             exception = exception.args[0]
         return exception.args[0]

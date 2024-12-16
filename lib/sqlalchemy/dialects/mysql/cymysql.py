@@ -21,10 +21,15 @@ r"""
 
 """  # noqa
 
+from typing import TYPE_CHECKING
+
 from .base import BIT
 from .base import MySQLDialect
 from .mysqldb import MySQLDialect_mysqldb
 from ... import util
+
+if TYPE_CHECKING:
+    import cymysql
 
 
 class _cymysqlBIT(BIT):
@@ -50,6 +55,7 @@ class MySQLDialect_cymysql(MySQLDialect_mysqldb):
     supports_sane_rowcount = True
     supports_sane_multi_rowcount = False
     supports_unicode_statements = True
+    dbapi: "cymysql"
 
     colspecs = util.update_copy(MySQLDialect.colspecs, {BIT: _cymysqlBIT})
 
