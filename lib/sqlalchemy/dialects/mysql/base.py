@@ -2713,15 +2713,17 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         json_serializer=None,
         json_deserializer=None,
         is_mariadb=None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         kwargs.pop("use_ansiquotes", None)  # legacy
         default.DefaultDialect.__init__(self, **kwargs)
         self._json_serializer = json_serializer
         self._json_deserializer = json_deserializer
         self._set_mariadb(is_mariadb, None)
 
-    def get_isolation_level_values(self, dbapi_conn):
+    def get_isolation_level_values(
+        self, dbapi_conn: "DBAPIConnection"
+    ) -> tuple["IsolationLevel", ...]:
         return (
             "SERIALIZABLE",
             "READ UNCOMMITTED",
@@ -2729,7 +2731,9 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
             "REPEATABLE READ",
         )
 
-    def set_isolation_level(self, dbapi_connection, level):
+    def set_isolation_level(
+        self, dbapi_connection: "DBAPIConnection", level: IsolationLevel
+    ) -> None:
         cursor = dbapi_connection.cursor()
         cursor.execute(f"SET SESSION TRANSACTION ISOLATION LEVEL {level}")
         cursor.execute("COMMIT")
@@ -2873,7 +2877,9 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         resultset = connection.exec_driver_sql("XA RECOVER")
         return [row["data"][0 : row["gtrid_length"]] for row in resultset]
 
-    def is_disconnect(self, e, connection, cursor):
+    def is_disconnect(
+        self, e: Exception, connection: Any, cursor: Any
+    ) -> bool:
         if isinstance(
             e,
             (
