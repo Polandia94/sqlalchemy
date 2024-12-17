@@ -6,6 +6,7 @@
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
 from .base import MariaDBIdentifierPreparer
 from .base import MySQLDialect
+from .base import MySQLIdentifierPreparer
 from .base import MySQLTypeCompiler
 from ... import util
 from ...sql import sqltypes
@@ -73,7 +74,7 @@ class MariaDBDialect(MySQLDialect):
     _allows_uuid_binds = True
 
     name = "mariadb"
-    preparer = MariaDBIdentifierPreparer
+    preparer: type[MySQLIdentifierPreparer] = MariaDBIdentifierPreparer
     type_compiler_cls = MariaDBTypeCompiler
 
     colspecs = util.update_copy(MySQLDialect.colspecs, {Uuid: _MariaDBUUID})
