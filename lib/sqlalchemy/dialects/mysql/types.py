@@ -686,7 +686,7 @@ class VARCHAR(_StringType, sqltypes.VARCHAR):
 
     __visit_name__ = "VARCHAR"
 
-    def __init__(self, length=None, **kwargs):
+    def __init__(self, length: int | None = None, **kwargs: Any) -> None:
         """Construct a VARCHAR.
 
         :param charset: Optional, a column-level character set for this string

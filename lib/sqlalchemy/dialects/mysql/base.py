@@ -1135,6 +1135,7 @@ if TYPE_CHECKING:
     from ...engine.result import _Ts
     from ...engine.row import Row
     from ...engine.url import URL
+    from ...schema import Table
     from ...sql import ddl
     from ...sql import selectable
     from ...sql.dml import _DMLTableElement
@@ -2606,7 +2607,7 @@ class MySQLIdentifierPreparer(compiler.IdentifierPreparer):
 
         super().__init__(dialect, initial_quote=quote, escape_quote=quote)
 
-    def _quote_free_identifiers(self, *ids):
+    def _quote_free_identifiers(self, *ids: str | None) -> tuple[str, ...]:
         """Unilaterally identifier-quote any number of strings."""
 
         return tuple([self.quote_identifier(i) for i in ids if i is not None])
@@ -2691,6 +2692,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
     _server_ansiquotes = False
 
     server_version_info: tuple[int, ...]
+    identifier_preparer: MySQLIdentifierPreparer
 
     construct_arguments = [
         (sa_schema.Table, {"*": None}),
@@ -2940,7 +2942,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         else:
             return None
 
-    def _extract_error_code(self, exception):
+    def _extract_error_code(self, exception: BaseException) -> int | None:
         raise NotImplementedError()
 
     def _get_default_schema_name(self, connection: Connection) -> str:
@@ -3546,7 +3548,13 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         return _reflection.MySQLTableDefinitionParser(self, preparer)
 
     @reflection.cache
-    def _setup_parser(self, connection, table_name, schema=None, **kw: Any):
+    def _setup_parser(
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kw: Any,
+    ) -> "_reflection.ReflectedState":
         charset = self._connection_charset
         parser = self._tabledef_parser
         full_name = ".".join(
@@ -3582,7 +3590,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         if not row:
             return None
         else:
-            return row[fetch_col]
+            return row[fetch_col]  # type: ignore[no-any-return]
 
     def _detect_charset(self, connection: "Connection") -> str:
         raise NotImplementedError()
@@ -3611,7 +3619,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self._casing = cs
         return cs
 
-    def _detect_collations(self, connection):
+    def _detect_collations(self, connection: Connection) -> dict[str, str]:
         """Pull the active COLLATIONS list from the server.
 
         Cached per-connection.
@@ -3652,8 +3660,12 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self._backslash_escapes = "NO_BACKSLASH_ESCAPES" not in mode
 
     def _show_create_table(
-        self, connection, table, charset: str | None = None, full_name=None
-    ):
+        self,
+        connection: "Connection",
+        table: "Table | None",
+        charset: str | None = None,
+        full_name: str | None = None,
+    ) -> str:
         """Run SHOW CREATE TABLE for a ``Table``."""
 
         if full_name is None:
@@ -3666,18 +3678,22 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
                 skip_user_error_events=True
             ).exec_driver_sql(st)
         except exc.DBAPIError as e:
-            if self._extract_error_code(e.orig) == 1146:
+            if self._extract_error_code(e.orig) == 1146:  # type: ignore[arg-type] # noqa: E501
                 raise exc.NoSuchTableError(full_name) from e
             else:
                 raise
         row = self._compat_first(rp, charset=charset)
         if not row:
             raise exc.NoSuchTableError(full_name)
-        return row[1].strip()
+        return row[1].strip()  # type: ignore[no-any-return]
 
     def _describe_table(
-        self, connection, table, charset: str | None = None, full_name=None
-    ):
+        self,
+        connection: Connection,
+        table: Table | None,
+        charset: str | None = None,
+        full_name: str | None = None,
+    ) -> Sequence[Row[*tuple[Any, ...]]] | Sequence[_DecodingRow]:
         """Run DESCRIBE for a ``Table`` and return processed rows."""
 
         if full_name is None:
@@ -3691,7 +3707,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
                     skip_user_error_events=True
                 ).exec_driver_sql(st)
             except exc.DBAPIError as e:
-                code = self._extract_error_code(e.orig)
+                code = self._extract_error_code(e.orig)  # type: ignore[arg-type] # noqa: E501
                 if code == 1146:
                     raise exc.NoSuchTableError(full_name) from e
 
@@ -3737,14 +3753,14 @@ class _DecodingRow:
         self.rowproxy = rowproxy
         self.charset = self._encoding_compat.get(charset, charset)
 
-    def __getitem__(self, index) -> str:
+    def __getitem__(self, index: int) -> str:
         item = self.rowproxy[index]
         if self.charset and isinstance(item, bytes):
             return item.decode(self.charset)
         else:
-            return item
+            return item  # type: ignore[return-value]
 
-    def __getattr__(self, attr):
+    def __getattr__(self, attr: str) -> Any:
         item = getattr(self.rowproxy, attr)
         if self.charset and isinstance(item, bytes):
             return item.decode(self.charset)

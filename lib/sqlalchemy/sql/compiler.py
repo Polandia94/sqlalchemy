@@ -7703,7 +7703,12 @@ class IdentifierPreparer:
     def format_index(self, index):
         return self.format_constraint(index)
 
-    def format_table(self, table, use_schema=True, name=None):
+    def format_table(
+        self,
+        table: "Table | None",
+        use_schema: bool = True,
+        name: str | None = None,
+    ) -> str:
         """Prepare a quoted table and schema name."""
 
         if name is None:

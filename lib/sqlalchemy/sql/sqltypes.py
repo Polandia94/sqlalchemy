@@ -2152,7 +2152,7 @@ class Interval(Emulated, _AbstractInterval, TypeDecorator[dt.timedelta]):
 
     def bind_processor(
         self, dialect: Dialect
-    ) -> _BindProcessorType[dt.timedelta]:
+    ) -> "_BindProcessorType[dt.timedelta]":
         if TYPE_CHECKING:
             assert isinstance(self.impl_instance, DateTime)
         impl_processor = self.impl_instance.bind_processor(dialect)
@@ -3655,7 +3655,9 @@ class Uuid(Emulated, TypeEngine[_UUID_RETURN]):
         else:
             return super().coerce_compared_value(op, value)
 
-    def bind_processor(self, dialect):
+    def bind_processor(
+        self, dialect: Dialect
+    ) -> "_BindProcessorType[str] | None":
         character_based_uuid = (
             not dialect.supports_native_uuid or not self.native_uuid
         )
@@ -3663,7 +3665,7 @@ class Uuid(Emulated, TypeEngine[_UUID_RETURN]):
         if character_based_uuid:
             if self.as_uuid:
 
-                def process(value):
+                def process(value: Any) -> str:
                     if value is not None:
                         value = value.hex
                     return value
@@ -3671,7 +3673,7 @@ class Uuid(Emulated, TypeEngine[_UUID_RETURN]):
                 return process
             else:
 
-                def process(value):
+                def process(value: Any) -> str:
                     if value is not None:
                         value = value.replace("-", "")
                     return value

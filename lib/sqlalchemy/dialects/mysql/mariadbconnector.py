@@ -222,7 +222,7 @@ class MySQLDialect_mariadbconnector(MySQLDialect):
             opts["client_flag"] = client_flag
         return [], opts
 
-    def _extract_error_code(self, exception: Exception) -> int:
+    def _extract_error_code(self, exception: BaseException) -> int:
         try:
             rc: int = exception.errno  # type: ignore
         except:

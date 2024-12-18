@@ -124,7 +124,7 @@ class MySQLDialect_pyodbc(PyODBCConnector, MySQLDialect):
     ) -> tuple[int, ...]:
         return MySQLDialect._get_server_version_info(self, connection)
 
-    def _extract_error_code(self, exception: Exception) -> None | int:
+    def _extract_error_code(self, exception: BaseException) -> None | int:
         m = re.compile(r"\((\d+)\)").search(str(exception.args))
         if m is None:
             return None

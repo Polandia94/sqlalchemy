@@ -260,7 +260,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
         else:
             return None
 
-    def _extract_error_code(self, exception: Exception) -> int:
+    def _extract_error_code(self, exception: BaseException) -> int:
         return exception.args[0]  # type: ignore[no-any-return]
 
     def _detect_charset(self, connection: "Connection") -> str:

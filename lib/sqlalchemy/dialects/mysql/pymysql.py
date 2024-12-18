@@ -142,7 +142,7 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
         else:
             return False
 
-    def _extract_error_code(self, exception: Exception) -> Any:
+    def _extract_error_code(self, exception: BaseException) -> Any:
         if isinstance(exception.args[0], Exception):
             exception = exception.args[0]
         return exception.args[0]
