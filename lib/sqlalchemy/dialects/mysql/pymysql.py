@@ -69,7 +69,7 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
     supports_statement_cache = True
 
     description_encoding = None
-    dbapi: "pymysql"
+    dbapi: "pymysql"  # type: ignore[valid-type]
 
     @langhelpers.memoized_property
     def supports_server_side_cursors(self) -> bool:  # type: ignore[override]
@@ -112,7 +112,7 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
                     not insp.defaults or insp.defaults[0] is not False
                 )
 
-    def do_ping(self, dbapi_connection) -> Literal[True]:
+    def do_ping(self, dbapi_connection: "pymysql.Connection") -> Literal[True]:  # type: ignore # noqa: E501
         if self._send_false_to_ping:
             dbapi_connection.ping(False)
         else:
@@ -121,7 +121,7 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
         return True
 
     def create_connect_args(
-        self, url: "URL", _translate_args=None
+        self, url: "URL", _translate_args: dict[str, Any] | None = None
     ) -> "ConnectArgsType":
         if _translate_args is None:
             _translate_args = dict(username="user")
@@ -134,7 +134,7 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
     ) -> bool:
         if super().is_disconnect(e, connection, cursor):
             return True
-        elif isinstance(e, self.dbapi.Error):
+        elif isinstance(e, self.dbapi.Error):  # type: ignore[attr-defined]
             str_e = str(e).lower()
             return (
                 "already closed" in str_e or "connection was killed" in str_e

@@ -75,10 +75,8 @@ class MySQLDialect_cymysql(MySQLDialect_mysqldb):
     def _detect_charset(self, connection: "Connection") -> str:
         return connection.connection.charset  # type: ignore
 
-    def _extract_error_code(
-        self, exception: "cymysql.OperationalError"
-    ) -> object:
-        return exception.errno
+    def _extract_error_code(self, exception: Exception) -> int:
+        return exception.errno  # type: ignore
 
     def is_disconnect(
         self, e: Exception, connection: Any, cursor: Any

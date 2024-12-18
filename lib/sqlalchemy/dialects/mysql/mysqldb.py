@@ -104,8 +104,11 @@ from ... import util
 if TYPE_CHECKING:
     import MySQLdb
 
-    from sqlalchemy import URL
+    from ...engine.base import Connection
     from ...engine.interfaces import ConnectArgsType
+    from ...engine.interfaces import DBAPIConnection
+    from ...engine.interfaces import IsolationLevel
+    from ...engine.url import URL
 
 
 class MySQLExecutionContext_mysqldb(MySQLExecutionContext):
@@ -130,6 +133,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
     statement_compiler = MySQLCompiler_mysqldb
     preparer = MySQLIdentifierPreparer
     server_version_info: tuple[int, ...]
+    dbapi: "MySQLdb"
 
     def __init__(self, **kwargs: Any):
         super().__init__(**kwargs)
@@ -139,7 +143,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
             else (0, 0, 0)
         )
 
-    def _parse_dbapi_version(self, version) -> tuple[int, ...]:
+    def _parse_dbapi_version(self, version: str) -> tuple[int, ...]:
         m = re.match(r"(\d+)\.(\d+)(?:\.(\d+))?", version)
         if m:
             return tuple(int(x) for x in m.group(1, 2, 3) if x is not None)
@@ -184,14 +188,14 @@ class MySQLDialect_mysqldb(MySQLDialect):
         cursor: "MySQLdb.cursors.Cursor",
         statement: LiteralString,
         parameters: Iterable[Any],
-        context: MySQLExecutionContext_mysqldb | None = None,
+        context: MySQLExecutionContext_mysqldb | None = None,  # type: ignore
     ) -> None:
         rowcount = cursor.executemany(statement, parameters)
         if context is not None:
             context._rowcount = rowcount
 
     def create_connect_args(
-        self, url: "URL", _translate_args=None
+        self, url: "URL", _translate_args: dict[str, Any] | None = None
     ) -> "ConnectArgsType":
         if _translate_args is None:
             _translate_args = dict(
@@ -241,31 +245,32 @@ class MySQLDialect_mysqldb(MySQLDialect):
         if client_flag_found_rows is not None:
             client_flag |= client_flag_found_rows
             opts["client_flag"] = client_flag
-        return [[], opts]
+        return [], opts
 
-    def _found_rows_client_flag(self):
+    def _found_rows_client_flag(self) -> int | None:
         if self.dbapi is not None:
             try:
-                CLIENT_FLAGS = __import__(
+                CLIENT_FLAGS: "MySQLdb.constants.CLIENT" = __import__(
                     self.dbapi.__name__ + ".constants.CLIENT"
                 ).constants.CLIENT
             except (AttributeError, ImportError):
                 return None
             else:
-                return CLIENT_FLAGS.FOUND_ROWS
+                return CLIENT_FLAGS.FOUND_ROWS  # type: ignore[no-any-return]
         else:
             return None
 
-    def _extract_error_code(self, exception):
-        return exception.args[0]
+    def _extract_error_code(self, exception: Exception) -> int:
+        return exception.args[0]  # type: ignore[no-any-return]
 
-    def _detect_charset(self, connection):
+    def _detect_charset(self, connection: "Connection") -> str:
         """Sniff out the character set in use for connection results."""
 
         try:
             # note: the SQL here would be
             # "SHOW VARIABLES LIKE 'character_set%%'"
-            cset_name = connection.connection.character_set_name
+
+            cset_name: Callable[[], str] = connection.connection.character_set_name  # type: ignore[attr-defined]  # noqa: E501
         except AttributeError:
             util.warn(
                 "No 'character_set_name' can be detected with "
@@ -277,7 +282,9 @@ class MySQLDialect_mysqldb(MySQLDialect):
         else:
             return cset_name()
 
-    def get_isolation_level_values(self, dbapi_connection):
+    def get_isolation_level_values(
+        self, dbapi_conn: "DBAPIConnection"
+    ) -> tuple["IsolationLevel", ...]:
         return (
             "SERIALIZABLE",
             "READ UNCOMMITTED",
@@ -286,7 +293,9 @@ class MySQLDialect_mysqldb(MySQLDialect):
             "AUTOCOMMIT",
         )
 
-    def set_isolation_level(self, dbapi_connection, level):
+    def set_isolation_level(
+        self, dbapi_connection: "MySQLdb.Connection", level: "IsolationLevel"
+    ) -> None:
         if level == "AUTOCOMMIT":
             dbapi_connection.autocommit(True)
         else:

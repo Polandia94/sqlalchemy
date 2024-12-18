@@ -229,7 +229,7 @@ class MySQLDialect_mariadbconnector(MySQLDialect):
             rc = -1
         return rc
 
-    def _detect_charset(self, connection: Any) -> str:
+    def _detect_charset(self, connection: "Connection") -> str:
         return "utf8mb4"
 
     def get_isolation_level_values(

@@ -44,7 +44,9 @@ Pass through exact pyodbc connection string::
 
 """  # noqa
 
+import datetime
 import re
+from typing import Any
 from typing import Callable
 from typing import TYPE_CHECKING
 
@@ -59,23 +61,29 @@ from ...sql.sqltypes import Time
 if TYPE_CHECKING:
     import pyodbc
 
+    from ...engine import Connection
+    from ...engine.interfaces import Dialect
+    from ...sql.type_api import _ResultProcessorType
+
 
 class _pyodbcTIME(TIME):
-    def result_processor(self, dialect, coltype):
-        def process(value):
+    def result_processor(
+        self, dialect: "Dialect", coltype: object
+    ) -> "_ResultProcessorType[datetime.time]":
+        def process(value: Any) -> "datetime.time | None":
             # pyodbc returns a datetime.time object; no need to convert
-            return value
+            return value  # type: ignore[no-any-return]
 
         return process
 
 
 class MySQLExecutionContext_pyodbc(MySQLExecutionContext):
-    def get_lastrowid(self):
+    def get_lastrowid(self) -> int:
         cursor = self.create_cursor()
         cursor.execute("SELECT LAST_INSERT_ID()")
-        lastrowid = cursor.fetchone()[0]
+        lastrowid = cursor.fetchone()[0]  # type: ignore[index]
         cursor.close()
-        return lastrowid
+        return lastrowid  # type: ignore[no-any-return]
 
 
 class MySQLDialect_pyodbc(PyODBCConnector, MySQLDialect):
@@ -86,7 +94,7 @@ class MySQLDialect_pyodbc(PyODBCConnector, MySQLDialect):
 
     pyodbc_driver_name = "MySQL"
 
-    def _detect_charset(self, connection):
+    def _detect_charset(self, connection: "Connection") -> str:
         """Sniff out the character set in use for connection results."""
 
         # Prefer 'character_set_results' for the current connection over the
@@ -111,7 +119,9 @@ class MySQLDialect_pyodbc(PyODBCConnector, MySQLDialect):
         )
         return "latin1"
 
-    def _get_server_version_info(self, connection):
+    def _get_server_version_info(
+        self, connection: "Connection"
+    ) -> tuple[int, ...]:
         return MySQLDialect._get_server_version_info(self, connection)
 
     def _extract_error_code(self, exception: Exception) -> None | int:

@@ -466,10 +466,12 @@ class TIME(sqltypes.TIME):
         super().__init__(timezone=timezone)
         self.fsp = fsp
 
-    def result_processor(self, dialect, coltype):
+    def result_processor(
+        self, dialect: "Dialect", coltype: object
+    ) -> "_ResultProcessorType[datetime.time]":
         time = datetime.time
 
-        def process(value):
+        def process(value: Any) -> datetime.time | None:
             # convert from a timedelta value
             if value is not None:
                 microseconds = value.microseconds

@@ -2723,7 +2723,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     def get_isolation_level_values(
         self, dbapi_conn: "DBAPIConnection"
-    ) -> tuple["IsolationLevel", ...]:
+    ) -> Sequence["IsolationLevel"]:
         return (
             "SERIALIZABLE",
             "READ UNCOMMITTED",
@@ -2778,7 +2778,9 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         finally:
             conn.close()
 
-    def _get_server_version_info(self, connection) -> tuple[int, ...]:
+    def _get_server_version_info(
+        self, connection: Connection
+    ) -> tuple[int, ...]:
         # get database server version info explicitly over the wire
         # to avoid proxy servers like MaxScale getting in the
         # way with their own values, see #4205
@@ -2908,7 +2910,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     def _compat_fetchall(
         self, rp: CursorResult[Unpack[TupleAny]], charset: str | None = None
-    ):
+    ) -> Sequence[Row[*tuple[Any, ...]]] | Sequence[_DecodingRow]:
         """Proxy result rows to smooth over MySQL-Python driver
         inconsistencies."""
 
@@ -2916,7 +2918,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     def _compat_fetchone(
         self, rp: CursorResult[Unpack[TupleAny]], charset: str | None = None
-    ):
+    ) -> Row[*tuple[Any, ...]] | None | _DecodingRow:
         """Proxy a result row to smooth over MySQL-Python driver
         inconsistencies."""
 
@@ -3041,7 +3043,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
     def initialize(self, connection: Connection) -> None:
         # this is driver-based, does not need server version info
         # and is fairly critical for even basic SQL operations
-        self._connection_charset = self._detect_charset(connection)
+        self._connection_charset: str | None = self._detect_charset(connection)
 
         # call super().initialize() because we need to have
         # server_version_info set up.  in 1.4 under python 2 only this does the
@@ -3582,10 +3584,10 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         else:
             return row[fetch_col]
 
-    def _detect_charset(self, connection: Connection) -> str:
+    def _detect_charset(self, connection: "Connection") -> str:
         raise NotImplementedError()
 
-    def _detect_casing(self, connection: Connection) -> int:
+    def _detect_casing(self, connection: "Connection") -> int:
         """Sniff out identifier case sensitivity.
 
         Cached per-connection. This value can not change without a server
