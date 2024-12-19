@@ -443,7 +443,7 @@ class DefaultDialect(Dialect):
     def _bind_typing_render_casts(self):
         return self.bind_typing is interfaces.BindTyping.RENDER_CASTS
 
-    def _ensure_has_table_connection(self, arg):
+    def _ensure_has_table_connection(self, arg: Connection) -> None:
         if not isinstance(arg, Connection):
             raise exc.ArgumentError(
                 "The argument passed to Dialect.has_table() should be a "
@@ -956,7 +956,7 @@ class DefaultDialect(Dialect):
     def do_execute_no_params(self, cursor, statement, context=None):
         cursor.execute(statement)
 
-    def is_disconnect(self, e, connection, cursor):
+    def is_disconnect(self, e, connection, cursor) -> bool:
         return False
 
     @util.memoized_instancemethod

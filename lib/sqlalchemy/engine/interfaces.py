@@ -548,6 +548,8 @@ class ReflectedIndex(TypedDict):
     dialect_options: NotRequired[Dict[str, Any]]
     """Additional dialect-specific options detected for this index"""
 
+    type: NotRequired[str]
+
 
 class ReflectedTableComment(TypedDict):
     """Dictionary representing the reflected comment corresponding to

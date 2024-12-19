@@ -1045,6 +1045,7 @@ from itertools import compress
 import re
 from typing import Any
 from typing import cast
+from typing import NoReturn
 from typing import TYPE_CHECKING
 
 from . import reflection as _reflection
@@ -1132,6 +1133,7 @@ if TYPE_CHECKING:
     from ...engine.interfaces import ReflectedIndex
     from ...engine.interfaces import ReflectedPrimaryKeyConstraint
     from ...engine.interfaces import ReflectedTableComment
+    from ...engine.interfaces import ReflectedUniqueConstraint
     from ...engine.result import _Ts
     from ...engine.row import Row
     from ...engine.url import URL
@@ -2796,7 +2798,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
         return self._parse_server_version(val)
 
-    def _parse_server_version(self, val) -> tuple[int, ...]:
+    def _parse_server_version(self, val: str) -> tuple[int, ...]:
         version: list[int] = []
         is_mariadb = False
 
@@ -2818,7 +2820,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         server_version_info = tuple(version)
 
         self._set_mariadb(
-            server_version_info and is_mariadb, server_version_info
+            bool(server_version_info and is_mariadb), server_version_info
         )
 
         if not is_mariadb:
@@ -2834,7 +2836,9 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self.server_version_info = server_version_info
         return server_version_info
 
-    def _set_mariadb(self, is_mariadb, server_version_info):
+    def _set_mariadb(
+        self, is_mariadb: bool | None, server_version_info: tuple[int, ...]
+    ) -> None:
         if is_mariadb is None:
             return
 
@@ -2856,28 +2860,36 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
         self.is_mariadb = is_mariadb
 
-    def do_begin_twophase(self, connection, xid):
+    def do_begin_twophase(self, connection: Connection, xid: Any) -> None:
         connection.execute(sql.text("XA BEGIN :xid"), dict(xid=xid))
 
-    def do_prepare_twophase(self, connection, xid):
+    def do_prepare_twophase(self, connection: Connection, xid: Any) -> None:
         connection.execute(sql.text("XA END :xid"), dict(xid=xid))
         connection.execute(sql.text("XA PREPARE :xid"), dict(xid=xid))
 
     def do_rollback_twophase(
-        self, connection, xid, is_prepared=True, recover=False
-    ):
+        self,
+        connection: Connection,
+        xid: Any,
+        is_prepared: bool = True,
+        recover: bool = False,
+    ) -> None:
         if not is_prepared:
             connection.execute(sql.text("XA END :xid"), dict(xid=xid))
         connection.execute(sql.text("XA ROLLBACK :xid"), dict(xid=xid))
 
     def do_commit_twophase(
-        self, connection, xid, is_prepared=True, recover=False
-    ):
+        self,
+        connection: Connection,
+        xid: Any,
+        is_prepared: bool = True,
+        recover: bool = False,
+    ) -> None:
         if not is_prepared:
             self.do_prepare_twophase(connection, xid)
         connection.execute(sql.text("XA COMMIT :xid"), dict(xid=xid))
 
-    def do_recover_twophase(self, connection):
+    def do_recover_twophase(self, connection: Connection) -> list[Any]:
         resultset = connection.exec_driver_sql("XA RECOVER")
         return [row["data"][0 : row["gtrid_length"]] for row in resultset]
 
@@ -2887,9 +2899,9 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         if isinstance(
             e,
             (
-                self.dbapi.OperationalError,
-                self.dbapi.ProgrammingError,
-                self.dbapi.InterfaceError,
+                self.dbapi.OperationalError,  # type: ignore
+                self.dbapi.ProgrammingError,  # type: ignore
+                self.dbapi.InterfaceError,  # type: ignore
             ),
         ) and self._extract_error_code(e) in (
             1927,
@@ -2902,7 +2914,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         ):
             return True
         elif isinstance(
-            e, (self.dbapi.InterfaceError, self.dbapi.InternalError)
+            e, (self.dbapi.InterfaceError, self.dbapi.InternalError)  # type: ignore  # noqa: E501
         ):
             # if underlying connection is closed,
             # this is the error you get
@@ -2932,7 +2944,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     def _compat_first(
         self, rp: CursorResult[Unpack[TupleAny]], charset: str | None = None
-    ):
+    ) -> _DecodingRow | None:
         """Proxy a result row to smooth over MySQL-Python driver
         inconsistencies."""
 
@@ -2946,10 +2958,16 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         raise NotImplementedError()
 
     def _get_default_schema_name(self, connection: Connection) -> str:
-        return connection.exec_driver_sql("SELECT DATABASE()").scalar()
+        return connection.exec_driver_sql("SELECT DATABASE()").scalar()  # type: ignore[return-value]  # noqa: E501
 
     @reflection.cache
-    def has_table(self, connection, table_name, schema=None, **kw: Any):
+    def has_table(
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kw: Any,
+    ) -> bool:
         self._ensure_has_table_connection(connection)
 
         if schema is None:
@@ -2990,12 +3008,18 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
             #
             # there's more "doesn't exist" kinds of messages but they are
             # less clear if mysql 8 would suddenly start using one of those
-            if self._extract_error_code(e.orig) in (1146, 1049, 1051):
+            if self._extract_error_code(e.orig) in (1146, 1049, 1051):  # type: ignore  # noqa: E501
                 return False
             raise
 
     @reflection.cache
-    def has_sequence(self, connection, sequence_name, schema=None, **kw: Any):
+    def has_sequence(
+        self,
+        connection: Connection,
+        sequence_name: str,
+        schema: str | None = None,
+        **kw: Any,
+    ) -> bool:
         if not self.supports_sequences:
             self._sequences_not_supported()
         if not schema:
@@ -3015,14 +3039,16 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         )
         return cursor.first() is not None
 
-    def _sequences_not_supported(self):
+    def _sequences_not_supported(self) -> NoReturn:
         raise NotImplementedError(
             "Sequences are supported only by the "
             "MariaDB series 10.3 or greater"
         )
 
     @reflection.cache
-    def get_sequence_names(self, connection, schema=None, **kw: Any):
+    def get_sequence_names(
+        self, connection: Connection, schema: str | None = None, **kw: Any
+    ) -> list[str]:
         if not self.supports_sequences:
             self._sequences_not_supported()
         if not schema:
@@ -3105,7 +3131,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
                 )
 
     @property
-    def _support_float_cast(self):
+    def _support_float_cast(self) -> bool:
         if not self.server_version_info:
             return False
         elif self.is_mariadb:
@@ -3136,9 +3162,13 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     @property
     def _is_mariadb_102(self) -> bool:
-        return self.is_mariadb and self._mariadb_normalized_version_info > (
-            10,
-            2,
+        return (
+            self.is_mariadb
+            and self._mariadb_normalized_version_info
+            > (  # type:ignore[operator]
+                10,
+                2,
+            )
         )
 
     @reflection.cache
@@ -3289,7 +3319,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self,
         fkeys: list["ReflectedForeignKeyConstraint"],
         connection: Connection,
-    ):
+    ) -> None:
         # Foreign key is always in lower case (MySQL 8.0)
         # https://bugs.mysql.com/bug.php?id=88718
         # issue #4344 for SQLAlchemy
@@ -3305,22 +3335,24 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
         if self._casing in (1, 2):
 
-            def lower(s):
+            def lower(s: str) -> str:
                 return s.lower()
 
         else:
             # if on case sensitive, there can be two tables referenced
             # with the same name different casing, so we need to use
             # case-sensitive matching.
-            def lower(s):
+            def lower(s: str) -> str:
                 return s
 
-        default_schema_name = connection.dialect.default_schema_name
+        default_schema_name: str = connection.dialect.default_schema_name  # type: ignore  # noqa: E501
 
         # NOTE: using (table_schema, table_name, lower(column_name)) in (...)
         # is very slow since mysql does not seem able to properly use indexse.
         # Unpack the where condition instead.
-        schema_by_table_by_column = defaultdict(lambda: defaultdict(list))
+        schema_by_table_by_column: defaultdict[
+            str, defaultdict[str, list[str]]
+        ] = defaultdict(lambda: defaultdict(list))
         for rec in fkeys:
             sch = lower(rec["referred_schema"] or default_schema_name)
             tbl = lower(rec["referred_table"])
@@ -3355,7 +3387,9 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
                 _info_columns.c.column_name,
             ).where(condition)
 
-            correct_for_wrong_fk_case = connection.execute(select)
+            correct_for_wrong_fk_case: CursorResult[str, str, str] = (
+                connection.execute(select)
+            )
 
             # in casing=0, table name and schema name come back in their
             # exact case.
@@ -3367,26 +3401,26 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
             # SHOW CREATE TABLE converts them to *lower case*, therefore
             # not matching.  So for this case, case-insensitive lookup
             # is necessary
-            d = defaultdict(dict)
+            d: defaultdict[tuple[str, str], dict[str, str]] = defaultdict(dict)
             for schema, tname, cname in correct_for_wrong_fk_case:
                 d[(lower(schema), lower(tname))]["SCHEMANAME"] = schema
                 d[(lower(schema), lower(tname))]["TABLENAME"] = tname
                 d[(lower(schema), lower(tname))][cname.lower()] = cname
 
             for fkey in fkeys:
-                rec = d[
+                rec_b = d[
                     (
                         lower(fkey["referred_schema"] or default_schema_name),
                         lower(fkey["referred_table"]),
                     )
                 ]
 
-                fkey["referred_table"] = rec["TABLENAME"]
+                fkey["referred_table"] = rec_b["TABLENAME"]
                 if fkey["referred_schema"] is not None:
-                    fkey["referred_schema"] = rec["SCHEMANAME"]
+                    fkey["referred_schema"] = rec_b["SCHEMANAME"]
 
                 fkey["referred_columns"] = [
-                    rec[col.lower()] for col in fkey["referred_columns"]
+                    rec_b[col.lower()] for col in fkey["referred_columns"]
                 ]
 
     @reflection.cache
@@ -3437,7 +3471,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
             connection, table_name, schema, **kw
         )
 
-        indexes = []
+        indexes: list["ReflectedIndex"] = []
 
         for spec in parsed_state.keys:
             dialect_options = {}
@@ -3462,17 +3496,18 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
                     "parser"
                 ]
 
-            index_d = {}
+            index_d: ReflectedIndex = {
+                "name": spec["name"],
+                "column_names": [s[0] for s in spec["columns"]],
+                "unique": unique,
+            }
 
-            index_d["name"] = spec["name"]
-            index_d["column_names"] = [s[0] for s in spec["columns"]]
             mysql_length = {
                 s[0]: s[1] for s in spec["columns"] if s[1] is not None
             }
             if mysql_length:
                 dialect_options["%s_length" % self.name] = mysql_length
 
-            index_d["unique"] = unique
             if flavor:
                 index_d["type"] = flavor
 
@@ -3485,13 +3520,17 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     @reflection.cache
     def get_unique_constraints(
-        self, connection, table_name, schema=None, **kw
-    ):
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kw: Any,
+    ) -> list["ReflectedUniqueConstraint"]:
         parsed_state = self._parsed_state_or_create(
             connection, table_name, schema, **kw
         )
 
-        ucs = [
+        ucs: list["ReflectedUniqueConstraint"] = [
             {
                 "name": key["name"],
                 "column_names": [col[0] for col in key["columns"]],
@@ -3508,8 +3547,12 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     @reflection.cache
     def get_view_definition(
-        self, connection, view_name, schema=None, **kw: Any
-    ):
+        self,
+        connection: Connection,
+        view_name: str,
+        schema: str | None = None,
+        **kw: Any,
+    ) -> str:
         charset = self._connection_charset
         full_name = ".".join(
             self.identifier_preparer._quote_free_identifiers(schema, view_name)
@@ -3528,7 +3571,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         table_name: str,
         schema: str | None = None,
         **kw: Any,
-    ):
+    ) -> "_reflection.ReflectedState":
         return self._setup_parser(
             connection,
             table_name,
@@ -3537,7 +3580,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         )
 
     @util.memoized_property
-    def _tabledef_parser(self):
+    def _tabledef_parser(self) -> _reflection.MySQLTableDefinitionParser:
         """return the MySQLTableDefinitionParser, generate if needed.
 
         The deferred creation ensures that the dialect has
@@ -3590,7 +3633,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         if not row:
             return None
         else:
-            return row[fetch_col]  # type: ignore[no-any-return]
+            return row[fetch_col]
 
     def _detect_charset(self, connection: "Connection") -> str:
         raise NotImplementedError()
@@ -3685,7 +3728,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         row = self._compat_first(rp, charset=charset)
         if not row:
             raise exc.NoSuchTableError(full_name)
-        return row[1].strip()  # type: ignore[no-any-return]
+        return row[1].strip()
 
     def _describe_table(
         self,
