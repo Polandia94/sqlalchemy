@@ -7404,7 +7404,7 @@ class IdentifierPreparer:
         prep._includes_none_schema_translate = includes_none
         return prep
 
-    def _render_schema_translates(self, statement, schema_translate_map):
+    def _render_schema_translates(self, statement: str, schema_translate_map):
         d = schema_translate_map
         if None in d:
             if not self._includes_none_schema_translate:
@@ -7609,7 +7609,7 @@ class IdentifierPreparer:
         else:
             return collation_name
 
-    def format_sequence(self, sequence, use_schema=True):
+    def format_sequence(self, sequence: schema.Sequence, use_schema=True):
         name = self.quote(sequence.name)
 
         effective_schema = self.schema_for_object(sequence)

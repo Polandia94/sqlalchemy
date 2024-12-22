@@ -169,7 +169,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
             if super_ is not None:
                 super_(conn)
 
-            charset_name = conn.character_set_name()  # type: ignore[no-untyped-call]  # noqa: E501
+            charset_name = conn.character_set_name()
 
             if charset_name is not None:
                 cursor = conn.cursor()
@@ -178,11 +178,11 @@ class MySQLDialect_mysqldb(MySQLDialect):
 
         return on_connect
 
-    def do_ping(self, dbapi_connection: "MySQLdb.Connection") -> Literal[True]:  # type: ignore[override]  # noqa: E501
-        dbapi_connection.ping()  # type: ignore[no-untyped-call]
+    def do_ping(self, dbapi_connection: "MySQLdb.Connection") -> Literal[True]:
+        dbapi_connection.ping()
         return True
 
-    def do_executemany(  # type: ignore[override]
+    def do_executemany(
         self,
         cursor: "MySQLdb.cursors.Cursor",
         statement: LiteralString,
@@ -249,7 +249,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
     def _found_rows_client_flag(self) -> int | None:
         if self.dbapi is not None:
             try:
-                CLIENT_FLAGS: "MySQLdb.constants.CLIENT" = __import__(  # type: ignore[valid-type]  # noqa: E501
+                CLIENT_FLAGS: "MySQLdb.constants.CLIENT" = __import__(
                     self.dbapi.__name__ + ".constants.CLIENT"
                 ).constants.CLIENT
             except (AttributeError, ImportError):
@@ -293,13 +293,13 @@ class MySQLDialect_mysqldb(MySQLDialect):
         )
 
     def set_isolation_level(
-        self, dbapi_connection: "MySQLdb.Connection", level: "IsolationLevel"  # type: ignore[override]  # noqa: E501
+        self, dbapi_connection: "MySQLdb.Connection", level: "IsolationLevel"
     ) -> None:
         if level == "AUTOCOMMIT":
             dbapi_connection.autocommit(True)
         else:
             dbapi_connection.autocommit(False)
-            super().set_isolation_level(dbapi_connection, level)  # type: ignore[arg-type]  # noqa: E501
+            super().set_isolation_level(dbapi_connection, level)
 
 
 dialect = MySQLDialect_mysqldb

@@ -80,6 +80,7 @@ if typing.TYPE_CHECKING:
     from .interfaces import _CoreSingleExecuteParams
     from .interfaces import _DBAPICursorDescription
     from .interfaces import _DBAPIMultiExecuteParams
+    from .interfaces import _DBAPISingleExecuteParams
     from .interfaces import _ExecuteOptions
     from .interfaces import _MutableCoreSingleExecuteParams
     from .interfaces import _ParamStyle
@@ -1672,7 +1673,12 @@ class DefaultExecutionContext(ExecutionContext):
     def no_parameters(self):
         return self.execution_options.get("no_parameters", False)
 
-    def _execute_scalar(self, stmt, type_, parameters=None):
+    def _execute_scalar(
+        self,
+        stmt: str,
+        type_: TypeEngine[Any] | None,
+        parameters: _DBAPISingleExecuteParams | None = None,
+    ) -> Any:
         """Execute a string statement on the current cursor, returning a
         scalar result.
 

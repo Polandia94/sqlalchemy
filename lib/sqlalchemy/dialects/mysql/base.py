@@ -1108,6 +1108,7 @@ from ...sql import roles
 from ...sql import sqltypes
 from ...sql import util as sql_util
 from ...sql import visitors
+from ...sql.base import ReadOnlyColumnCollection
 from ...sql.compiler import InsertmanyvaluesSentinelOpts
 from ...sql.compiler import SQLCompiler
 from ...sql.schema import SchemaConst
@@ -1121,10 +1122,12 @@ from ...types import VARBINARY
 from ...util import topological
 
 if TYPE_CHECKING:
+    from typing import Sequence
+
     from ...dialects.mysql import expression
     from ...dialects.mysql.dml import OnDuplicateClause
     from ...engine.base import Connection
-    from ...engine.base import CursorResult
+    from ...engine.cursor import CursorResult
     from ...engine.interfaces import DBAPIConnection
     from ...engine.interfaces import DBAPICursor
     from ...engine.interfaces import IsolationLevel
@@ -1148,7 +1151,6 @@ if TYPE_CHECKING:
     from ...sql.functions import aggregate_strings
     from ...sql.functions import random
     from ...sql.functions import rollup
-    from ...sql.functions import Sequence
     from ...sql.functions import sysdate
     from ...sql.schema import Sequence as Sequence_SchemaItem
     from ...sql.type_api import TypeEngine
@@ -1156,6 +1158,11 @@ if TYPE_CHECKING:
     from ...util.typing import TupleAny
     from ...util.typing import TypeVarTuple
     from ...util.typing import Unpack
+
+    cols_type = (
+        Sequence[elements.KeyedColumnElement[Any]]
+        | ReadOnlyColumnCollection[str, elements.KeyedColumnElement[Any]]
+    )
 
 
 SET_RE = re.compile(
@@ -1269,7 +1276,7 @@ class MySQLExecutionContext(default.DefaultExecutionContext):
                 _cursor.FullyBufferedCursorFetchStrategy(
                     self.cursor,
                     [
-                        (entry.keyname, None)
+                        (entry.keyname, None)  # type: ignore[misc]
                         for entry in cast(
                             SQLCompiler, self.compiled
                         )._result_columns
@@ -1280,14 +1287,16 @@ class MySQLExecutionContext(default.DefaultExecutionContext):
 
     def create_server_side_cursor(self) -> DBAPICursor:
         if self.dialect.supports_server_side_cursors:
-            return self._dbapi_connection.cursor(self.dialect._sscursor)
+            return self._dbapi_connection.cursor(
+                self.dialect._sscursor  # type: ignore[attr-defined]
+            )
         else:
             raise NotImplementedError()
 
     def fire_sequence(
         self, seq: Sequence_SchemaItem, type_: sqltypes.Integer
     ) -> int:
-        return self._execute_scalar(
+        return self._execute_scalar(  # type: ignore[no-any-return]
             (
                 "select nextval(%s)"
                 % self.identifier_preparer.format_sequence(seq)
@@ -1311,7 +1320,7 @@ class MySQLCompiler(compiler.SQLCompiler):
         """
         if self.stack:
             stmt = self.stack[-1]["selectable"]
-            if stmt._where_criteria:
+            if stmt._where_criteria:  # type: ignore[attr-defined]
                 return " FROM DUAL"
 
         return ""
@@ -1319,7 +1328,7 @@ class MySQLCompiler(compiler.SQLCompiler):
     def visit_random_func(self, fn: "random", **kw: Any) -> str:
         return "rand%s" % self.function_argspec(fn)
 
-    def visit_rollup_func(self, fn: "rollup", **kw: Any) -> str:
+    def visit_rollup_func(self, fn: "rollup[Any]", **kw: Any) -> str:
         clause = ", ".join(
             elem._compiler_dispatch(self, **kw) for elem in fn.clauses
         )
@@ -1333,14 +1342,14 @@ class MySQLCompiler(compiler.SQLCompiler):
         )
         return f"group_concat({expr} SEPARATOR {delimeter})"
 
-    def visit_sequence(self, sequence: "Sequence", **kw: Any) -> str:
+    def visit_sequence(self, sequence: "sa_schema.Sequence", **kw: Any) -> str:
         return "nextval(%s)" % self.preparer.format_sequence(sequence)
 
     def visit_sysdate_func(self, fn: "sysdate", **kw: Any) -> str:
         return "SYSDATE()"
 
     def _render_json_extract_from_binary(
-        self, binary: elements.BinaryExpression, operator: Any, **kw: Any
+        self, binary: elements.BinaryExpression[Any], operator: Any, **kw: Any
     ) -> str:
         # note we are intentionally calling upon the process() calls in the
         # order in which they appear in the SQL String as this is used
@@ -1434,7 +1443,7 @@ class MySQLCompiler(compiler.SQLCompiler):
                 for key in on_duplicate._parameter_ordering
             ]
             ordered_keys = set(parameter_ordering)
-            cols = [
+            cols: "cols_type" = [
                 statement.table.c[key]
                 for key in parameter_ordering
                 if key in statement.table.c
@@ -1449,7 +1458,7 @@ class MySQLCompiler(compiler.SQLCompiler):
         )
 
         if requires_mysql8_alias:
-            if statement.table.name.lower() == "new":
+            if statement.table.name.lower() == "new":  # type: ignore[union-attr]  # noqa: E501
                 _on_dup_alias_name = "new_1"
             else:
                 _on_dup_alias_name = "new"
@@ -3615,7 +3624,9 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
             columns = self._describe_table(
                 connection, None, charset, full_name=full_name
             )
-            sql = parser._describe_to_create(table_name, columns)
+            sql = parser._describe_to_create(
+                table_name, columns  # type: ignore[arg-type]
+            )
         return parser.parse(sql, charset)
 
     def _fetch_setting(
