@@ -92,7 +92,6 @@ from typing import Any
 from typing import Callable
 from typing import Iterable
 from typing import Literal
-from typing import LiteralString
 from typing import TYPE_CHECKING
 
 from .base import MySQLCompiler
@@ -100,6 +99,7 @@ from .base import MySQLDialect
 from .base import MySQLExecutionContext
 from .base import MySQLIdentifierPreparer
 from ... import util
+from ...util.typing import LiteralString
 
 if TYPE_CHECKING:
     import MySQLdb
@@ -133,7 +133,6 @@ class MySQLDialect_mysqldb(MySQLDialect):
     statement_compiler = MySQLCompiler_mysqldb
     preparer = MySQLIdentifierPreparer
     server_version_info: tuple[int, ...]
-    dbapi: "MySQLdb"
 
     def __init__(self, **kwargs: Any):
         super().__init__(**kwargs)
@@ -170,7 +169,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
             if super_ is not None:
                 super_(conn)
 
-            charset_name = conn.character_set_name()
+            charset_name = conn.character_set_name()  # type: ignore[no-untyped-call]  # noqa: E501
 
             if charset_name is not None:
                 cursor = conn.cursor()
@@ -179,11 +178,11 @@ class MySQLDialect_mysqldb(MySQLDialect):
 
         return on_connect
 
-    def do_ping(self, dbapi_connection: "MySQLdb.Connection") -> Literal[True]:
-        dbapi_connection.ping()
+    def do_ping(self, dbapi_connection: "MySQLdb.Connection") -> Literal[True]:  # type: ignore[override]  # noqa: E501
+        dbapi_connection.ping()  # type: ignore[no-untyped-call]
         return True
 
-    def do_executemany(
+    def do_executemany(  # type: ignore[override]
         self,
         cursor: "MySQLdb.cursors.Cursor",
         statement: LiteralString,
@@ -250,13 +249,13 @@ class MySQLDialect_mysqldb(MySQLDialect):
     def _found_rows_client_flag(self) -> int | None:
         if self.dbapi is not None:
             try:
-                CLIENT_FLAGS: "MySQLdb.constants.CLIENT" = __import__(
+                CLIENT_FLAGS: "MySQLdb.constants.CLIENT" = __import__(  # type: ignore[valid-type]  # noqa: E501
                     self.dbapi.__name__ + ".constants.CLIENT"
                 ).constants.CLIENT
             except (AttributeError, ImportError):
                 return None
             else:
-                return CLIENT_FLAGS.FOUND_ROWS  # type: ignore[no-any-return]
+                return CLIENT_FLAGS.FOUND_ROWS  # type: ignore
         else:
             return None
 
@@ -294,13 +293,13 @@ class MySQLDialect_mysqldb(MySQLDialect):
         )
 
     def set_isolation_level(
-        self, dbapi_connection: "MySQLdb.Connection", level: "IsolationLevel"
+        self, dbapi_connection: "MySQLdb.Connection", level: "IsolationLevel"  # type: ignore[override]  # noqa: E501
     ) -> None:
         if level == "AUTOCOMMIT":
             dbapi_connection.autocommit(True)
         else:
             dbapi_connection.autocommit(False)
-            super().set_isolation_level(dbapi_connection, level)
+            super().set_isolation_level(dbapi_connection, level)  # type: ignore[arg-type]  # noqa: E501
 
 
 dialect = MySQLDialect_mysqldb

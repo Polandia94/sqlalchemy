@@ -27,7 +27,6 @@ from types import ModuleType
 from typing import Any
 from typing import Sequence
 from typing import TYPE_CHECKING
-from typing import Unpack
 
 from .base import MySQLCompiler
 from .base import MySQLDialect
@@ -35,6 +34,7 @@ from .base import MySQLIdentifierPreparer
 from .mariadb import MariaDBDialect
 from .types import BIT
 from ... import util
+from ...util.typing import Unpack
 
 if TYPE_CHECKING:
     from mysql import connector
@@ -188,12 +188,12 @@ class MySQLDialect_mysqlconnector(MySQLDialect):
 
     def _compat_fetchall(
         self, rp: "CursorResult[Unpack[TupleAny]]", charset: str | None = None
-    ) -> "Sequence[Row[*tuple[Any, ...]]]":
+    ) -> "Sequence[Row[tuple[Any, ...]]]":
         return rp.fetchall()
 
     def _compat_fetchone(
         self, rp: "CursorResult[Unpack[TupleAny]]", charset: str | None = None
-    ) -> "Row[*tuple[Any, ...]] | None":
+    ) -> "Row[Unpack[tuple[Any, ...]]] | None":
         return rp.fetchone()
 
     _isolation_lookup = {

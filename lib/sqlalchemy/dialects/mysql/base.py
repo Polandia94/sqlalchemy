@@ -1152,7 +1152,9 @@ if TYPE_CHECKING:
     from ...sql.functions import sysdate
     from ...sql.schema import Sequence as Sequence_SchemaItem
     from ...sql.type_api import TypeEngine
+    from ...sql.visitors import ExternallyTraversible
     from ...util.typing import TupleAny
+    from ...util.typing import TypeVarTuple
     from ...util.typing import Unpack
 
 
@@ -1367,8 +1369,8 @@ class MySQLCompiler(compiler.SQLCompiler):
             )
         elif binary.type._type_affinity in (sqltypes.Numeric, sqltypes.Float):
             if (
-                binary.type.scale is not None
-                and binary.type.precision is not None
+                binary.type.scale is not None  # type: ignore[attr-defined]
+                and binary.type.precision is not None  # type: ignore[attr-defined]  # noqa: E501
             ):
                 # using DECIMAL here because MySQL does not recognize NUMERIC
                 type_expression = (
@@ -1376,8 +1378,8 @@ class MySQLCompiler(compiler.SQLCompiler):
                     % (
                         self.process(binary.left, **kw),
                         self.process(binary.right, **kw),
-                        binary.type.precision,
-                        binary.type.scale,
+                        binary.type.precision,  # type: ignore[attr-defined]
+                        binary.type.scale,  # type: ignore[attr-defined]
                     )
                 )
             else:
@@ -1412,12 +1414,12 @@ class MySQLCompiler(compiler.SQLCompiler):
         return case_expression + " " + type_expression + " END"
 
     def visit_json_getitem_op_binary(
-        self, binary: elements.BinaryExpression, operator: Any, **kw: Any
+        self, binary: elements.BinaryExpression[Any], operator: Any, **kw: Any
     ) -> str:
         return self._render_json_extract_from_binary(binary, operator, **kw)
 
     def visit_json_path_getitem_op_binary(
-        self, binary: elements.BinaryExpression, operator: Any, **kw: Any
+        self, binary: elements.BinaryExpression[Any], operator: Any, **kw: Any
     ) -> str:
         return self._render_json_extract_from_binary(binary, operator, **kw)
 
@@ -1461,7 +1463,9 @@ class MySQLCompiler(compiler.SQLCompiler):
                 value_text = self.process(val.self_group(), use_schema=False)
             else:
 
-                def replace(element, **kw: Any):
+                def replace(
+                    element: "ExternallyTraversible", **kw: Any
+                ) -> "ExternallyTraversible | None":
                     if (
                         isinstance(element, elements.BindParameter)
                         and element.type._isnull
@@ -1500,7 +1504,7 @@ class MySQLCompiler(compiler.SQLCompiler):
                 "Additional column names not matching "
                 "any column keys in table '%s': %s"
                 % (
-                    self.statement.table.name,
+                    self.statement.table.name,  # type: ignore[union-attr]
                     (", ".join("'%s'" % c for c in non_matching)),
                 )
             )
@@ -1521,7 +1525,7 @@ class MySQLCompiler(compiler.SQLCompiler):
         )
 
     def visit_concat_op_binary(
-        self, binary: elements.BinaryExpression, operator: Any, **kw: Any
+        self, binary: elements.BinaryExpression[Any], operator: Any, **kw: Any
     ) -> str:
         return "concat(%s, %s)" % (
             self.process(binary.left, **kw),
@@ -1575,8 +1579,7 @@ class MySQLCompiler(compiler.SQLCompiler):
 
             raise exc.CompileError("Invalid MySQL match flags: %s" % flags_str)
 
-        match_clause = binary.left
-        match_clause = self.process(match_clause, **kw)
+        match_clause = self.process(binary.left, **kw)
         against_clause = self.process(binary.right, **kw)
 
         if any(flag_combination):
@@ -1585,10 +1588,7 @@ class MySQLCompiler(compiler.SQLCompiler):
                 flag_combination,
             )
 
-            against_clause = [against_clause]
-            against_clause.extend(flag_expressions)
-
-            against_clause = " ".join(against_clause)
+            against_clause = " ".join([against_clause, *flag_expressions])
 
         return "MATCH (%s) AGAINST (%s)" % (match_clause, against_clause)
 
@@ -1604,7 +1604,7 @@ class MySQLCompiler(compiler.SQLCompiler):
         if type_ is None:
             type_ = typeclause.type.dialect_impl(self.dialect)
         if isinstance(type_, sqltypes.TypeDecorator):
-            return self.visit_typeclause(typeclause, type_.impl, **kw)
+            return self.visit_typeclause(typeclause, type_.impl, **kw)  # type: ignore[arg-type]  # noqa: E501
         elif isinstance(type_, sqltypes.Integer):
             if getattr(type_, "unsigned", False):
                 return "UNSIGNED INTEGER"
@@ -1643,7 +1643,7 @@ class MySQLCompiler(compiler.SQLCompiler):
         else:
             return None
 
-    def visit_cast(self, cast: elements.Cast, **kw: Any) -> str:
+    def visit_cast(self, cast: elements.Cast[Any], **kw: Any) -> str:
         type_ = self.process(cast.typeclause)
         if type_ is None:
             util.warn(
@@ -1672,7 +1672,7 @@ class MySQLCompiler(compiler.SQLCompiler):
         return "false"
 
     def get_select_precolumns(
-        self, select: "selectable.Select", **kw: Any
+        self, select: "selectable.Select[TypeVarTuple]", **kw: Any
     ) -> str:
         """Add special MySQL keywords in place of DISTINCT.
 
@@ -2926,7 +2926,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     def _compat_fetchall(
         self, rp: CursorResult[Unpack[TupleAny]], charset: str | None = None
-    ) -> Sequence[Row[*tuple[Any, ...]]] | Sequence[_DecodingRow]:
+    ) -> Sequence[Row[Unpack[tuple[Any, ...]]]] | Sequence[_DecodingRow]:
         """Proxy result rows to smooth over MySQL-Python driver
         inconsistencies."""
 
@@ -2934,7 +2934,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     def _compat_fetchone(
         self, rp: CursorResult[Unpack[TupleAny]], charset: str | None = None
-    ) -> Row[*tuple[Any, ...]] | None | _DecodingRow:
+    ) -> Row[tuple[Any, ...]] | None | _DecodingRow:
         """Proxy a result row to smooth over MySQL-Python driver
         inconsistencies."""
 
@@ -3738,7 +3738,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         table: Table | None,
         charset: str | None = None,
         full_name: str | None = None,
-    ) -> Sequence[Row[*tuple[Any, ...]]] | Sequence[_DecodingRow]:
+    ) -> Sequence[Row[Unpack[tuple[Any, ...]]]] | Sequence[_DecodingRow]:
         """Run DESCRIBE for a ``Table`` and return processed rows."""
 
         if full_name is None:
