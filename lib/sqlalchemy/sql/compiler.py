@@ -109,6 +109,8 @@ if typing.TYPE_CHECKING:
     from .elements import ColumnElement
     from .elements import Label
     from .functions import Function
+    from .schema import Index
+    from .schema import PrimaryKeyConstraint
     from .schema import Table
     from .selectable import AliasedReturnsRows
     from .selectable import CompoundSelectState
@@ -6279,7 +6281,7 @@ class SQLCompiler(Compiled):
         return text
 
     def delete_extra_from_clause(
-        self, update_stmt, from_table, extra_froms, from_hints, **kw
+        self, delete_stmt, from_table, extra_froms, from_hints, **kw
     ):
         """Provide a hook to override the generation of an
         DELETE..FROM clause.
@@ -6522,7 +6524,7 @@ class StrSQLCompiler(SQLCompiler):
         )
 
     def delete_extra_from_clause(
-        self, update_stmt, from_table, extra_froms, from_hints, **kw
+        self, delete_stmt, from_table, extra_froms, from_hints, **kw
     ):
         kw["asfrom"] = True
         return ", " + ", ".join(
@@ -6734,7 +6736,7 @@ class DDLCompiler(Compiled):
     def visit_drop_view(self, drop, **kw):
         return "\nDROP VIEW " + self.preparer.format_table(drop.element)
 
-    def _verify_index_table(self, index):
+    def _verify_index_table(self, index: "Index") -> None:
         if index.table is None:
             raise exc.CompileError(
                 "Index '%s' is not associated with any table." % index.name
@@ -6785,7 +6787,9 @@ class DDLCompiler(Compiled):
 
         return text + self._prepared_index_name(index, include_schema=True)
 
-    def _prepared_index_name(self, index, include_schema=False):
+    def _prepared_index_name(
+        self, index: "Index", include_schema: bool = False
+    ) -> str:
         if index.table is not None:
             effective_schema = self.preparer.schema_for_object(index.table)
         else:
@@ -6932,7 +6936,7 @@ class DDLCompiler(Compiled):
     def post_create_table(self, table):
         return ""
 
-    def get_column_default_string(self, column):
+    def get_column_default_string(self, column: Column) -> str | None:
         if isinstance(column.server_default, schema.DefaultClause):
             return self.render_default_string(column.server_default.arg)
         else:
@@ -6976,7 +6980,9 @@ class DDLCompiler(Compiled):
         text += self.define_constraint_deferrability(constraint)
         return text
 
-    def visit_primary_key_constraint(self, constraint, **kw):
+    def visit_primary_key_constraint(
+        self, constraint: "PrimaryKeyConstraint", **kw: Any
+    ) -> str:
         if len(constraint) == 0:
             return ""
         text = ""
@@ -7055,7 +7061,7 @@ class DDLCompiler(Compiled):
             )
         return text
 
-    def define_constraint_deferrability(self, constraint):
+    def define_constraint_deferrability(self, constraint) -> str:
         text = ""
         if constraint.deferrable is not None:
             if constraint.deferrable:
@@ -7743,13 +7749,13 @@ class IdentifierPreparer:
 
     def format_column(
         self,
-        column,
-        use_table=False,
-        name=None,
-        table_name=None,
-        use_schema=False,
-        anon_map=None,
-    ):
+        column: "Column",
+        use_table: bool = False,
+        name: str | None = None,
+        table_name: str | None = None,
+        use_schema: bool = False,
+        anon_map: Mapping[str, Any] | None = None,
+    ) -> str:
         """Prepare a quoted column name."""
 
         if name is None:

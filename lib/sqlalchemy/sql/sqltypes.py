@@ -1464,7 +1464,9 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
         else:
             return self.enums
 
-    def _enum_init(self, enums, kw):
+    def _enum_init(
+        self, enums: Sequence[str | enum.StrEnum], kw: dict[str, Any]
+    ):
         """internal init for :class:`.Enum` and subclasses.
 
         friendly init helper used by subclasses to remove
@@ -1523,7 +1525,9 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
             _adapted_from=kw.pop("_adapted_from", None),
         )
 
-    def _parse_into_values(self, enums, kw):
+    def _parse_into_values(
+        self, enums: Sequence[str | type[enum.StrEnum]], kw
+    ):
         if not enums and "_enums" in kw:
             enums = kw.pop("_enums")
 
@@ -3459,6 +3463,7 @@ class BINARY(_Binary):
 class VARBINARY(_Binary):
     """The SQL VARBINARY type."""
 
+    length: int
     __visit_name__ = "VARBINARY"
 
 

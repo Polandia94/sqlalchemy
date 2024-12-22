@@ -14,6 +14,7 @@ from .base import MySQLIdentifierPreparer
 from .base import MySQLTypeCompiler
 from ... import util
 from ...sql import sqltypes
+from ...sql.sqltypes import _UUID_RETURN
 from ...sql.sqltypes import UUID
 from ...sql.sqltypes import Uuid
 
@@ -40,7 +41,7 @@ class INET6(sqltypes.TypeEngine[str]):
     __visit_name__ = "INET6"
 
 
-class _MariaDBUUID(UUID["_UUID_RETURN"]):
+class _MariaDBUUID(UUID[_UUID_RETURN]):
     def __init__(self, as_uuid: bool = True, native_uuid: bool = True):
         self.as_uuid = as_uuid
 

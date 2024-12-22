@@ -6,7 +6,9 @@
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
 
 
+from enum import StrEnum
 import re
+from typing import Any
 
 from .types import _StringType
 from ... import exc
@@ -22,7 +24,7 @@ class ENUM(sqltypes.NativeForEmulated, sqltypes.Enum, _StringType):
 
     native_enum = True
 
-    def __init__(self, *enums, **kw):
+    def __init__(self, *enums: str | type[StrEnum], **kw: Any):
         """Construct an ENUM.
 
         E.g.::

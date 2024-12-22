@@ -3875,7 +3875,7 @@ class BinaryExpression(OperatorExpression[_T]):
 
     """
 
-    modifiers: Optional[Mapping[str, Any]]
+    modifiers: Mapping[str, Any]
 
     left: ColumnElement[Any]
     right: ColumnElement[Any]
