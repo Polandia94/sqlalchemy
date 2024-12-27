@@ -244,7 +244,9 @@ class String(Concatenable, TypeEngine[str]):
 
         return process
 
-    def bind_processor(self, dialect):
+    def bind_processor(
+        self, dialect: "Dialect"
+    ) -> _BindProcessorType[str] | None:
         return None
 
     def result_processor(self, dialect, coltype):

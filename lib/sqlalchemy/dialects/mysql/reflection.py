@@ -9,6 +9,7 @@
 import re
 from typing import Any
 from typing import Callable
+from typing import Literal
 from typing import overload
 from typing import Sequence
 from typing import TYPE_CHECKING
@@ -23,33 +24,37 @@ from ... import types as sqltypes
 from ... import util
 
 if TYPE_CHECKING:
+    from .base import MySQLDialect
     from .base import MySQLIdentifierPreparer
+    from ...engine.interfaces import ReflectedColumn
 
 
 class ReflectedState:
     """Stores raw information about a SHOW CREATE TABLE statement."""
 
     def __init__(self) -> None:
-        self.columns = []
-        self.table_options = {}
-        self.table_name = None
-        self.keys = []
-        self.fk_constraints = []
-        self.ck_constraints = []
+        self.columns: list[ReflectedColumn] = []
+        self.table_options: dict[str, str] = {}
+        self.table_name: str | None = None
+        self.keys: list[dict[str, Any]] = []
+        self.fk_constraints: list[dict[str, Any]] = []
+        self.ck_constraints: list[dict[str, Any]] = []
 
 
 @log.class_logger
 class MySQLTableDefinitionParser(log.Identified):
     """Parses the results of a SHOW CREATE TABLE statement."""
 
-    def __init__(self, dialect, preparer: "MySQLIdentifierPreparer"):
+    def __init__(
+        self, dialect: "MySQLDialect", preparer: "MySQLIdentifierPreparer"
+    ):
         self.dialect = dialect
         self.preparer = preparer
         self._prep_regexes()
 
     def parse(self, show_create: str, charset: str | None) -> ReflectedState:
         state = ReflectedState()
-        state.charset = charset
+        state.charset = charset  # type: ignore[attr-defined]
         for line in re.split(r"\r?\n", show_create):
             if line.startswith("  " + self.preparer.initial_quote):
                 self._parse_column(line, state)
@@ -72,11 +77,11 @@ class MySQLTableDefinitionParser(log.Identified):
                 if type_ is None:
                     util.warn("Unknown schema content: %r" % line)
                 elif type_ == "key":
-                    state.keys.append(spec)
+                    state.keys.append(spec)  # type: ignore[arg-type]
                 elif type_ == "fk_constraint":
-                    state.fk_constraints.append(spec)
+                    state.fk_constraints.append(spec)  # type: ignore[arg-type]
                 elif type_ == "ck_constraint":
-                    state.ck_constraints.append(spec)
+                    state.ck_constraints.append(spec)  # type: ignore[arg-type]
                 else:
                     pass
         return state
@@ -84,7 +89,15 @@ class MySQLTableDefinitionParser(log.Identified):
     def _check_view(self, sql: str) -> bool:
         return bool(self._re_is_view.match(sql))
 
-    def _parse_constraints(self, line):
+    def _parse_constraints(
+        self, line: str
+    ) -> (
+        tuple[None, str]
+        | tuple[Literal["partition"], str]
+        | tuple[
+            Literal["ck_constraint", "fk_constraint", "key"], dict[str, str]
+        ]
+    ):
         """Parse a KEY or CONSTRAINT line.
 
         :param line: A line of SHOW CREATE TABLE output
@@ -134,7 +147,7 @@ class MySQLTableDefinitionParser(log.Identified):
         # No match.
         return (None, line)
 
-    def _parse_table_name(self, line, state):
+    def _parse_table_name(self, line: str, state: ReflectedState) -> None:
         """Extract the table name.
 
         :param line: The first line of SHOW CREATE TABLE
@@ -333,7 +346,7 @@ class MySQLTableDefinitionParser(log.Identified):
             name=name, type=type_instance, default=default, comment=comment
         )
         col_d.update(col_kw)
-        state.columns.append(col_d)
+        state.columns.append(col_d)  # type: ignore[arg-type]
 
     def _describe_to_create(
         self,

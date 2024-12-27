@@ -7827,7 +7827,7 @@ class IdentifierPreparer:
         )
         return r
 
-    def unformat_identifiers(self, identifiers):
+    def unformat_identifiers(self, identifiers: str) -> list[str]:
         """Unpack 'schema.table.column'-like strings into components."""
 
         r = self._r_identifiers
