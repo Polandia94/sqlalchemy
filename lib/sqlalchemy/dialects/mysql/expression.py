@@ -6,6 +6,8 @@
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
 
 
+from typing import Any
+
 from ... import exc
 from ... import util
 from ...sql import coercions
@@ -17,7 +19,7 @@ from ...sql.base import Generative
 from ...util.typing import Self
 
 
-class match(Generative, elements.BinaryExpression):
+class match(Generative, elements.BinaryExpression[Any]):
     """Produce a ``MATCH (X, Y) AGAINST ('TEXT')`` clause.
 
     E.g.::
@@ -73,7 +75,7 @@ class match(Generative, elements.BinaryExpression):
 
     inherit_cache = True
 
-    def __init__(self, *cols, **kw):
+    def __init__(self, *cols: elements.ColumnElement[Any], **kw: Any):
         if not cols:
             raise exc.ArgumentError("columns are required")
 

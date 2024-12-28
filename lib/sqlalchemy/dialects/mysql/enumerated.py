@@ -16,20 +16,23 @@ from ... import exc
 from ... import sql
 from ... import util
 from ...sql import sqltypes
+from ...sql import type_api
 
 if TYPE_CHECKING:
     from ...engine.interfaces import Dialect
+    from ...sql.elements import ColumnElement
     from ...sql.type_api import _BindProcessorType
+    from ...sql.type_api import _ResultProcessorType
 
 
-class ENUM(sqltypes.NativeForEmulated, sqltypes.Enum, _StringType):
+class ENUM(type_api.NativeForEmulated, sqltypes.Enum, _StringType):
     """MySQL ENUM type."""
 
     __visit_name__ = "ENUM"
 
     native_enum = True
 
-    def __init__(self, *enums: str | type[StrEnum], **kw: Any):
+    def __init__(self, *enums: str | StrEnum, **kw: Any):
         """Construct an ENUM.
 
         E.g.::
@@ -72,7 +75,9 @@ class ENUM(sqltypes.NativeForEmulated, sqltypes.Enum, _StringType):
         _StringType.__init__(self, length=self.length, **kw)
 
     @classmethod
-    def adapt_emulated_to_native(cls, impl, **kw):
+    def adapt_emulated_to_native(  # type: ignore[override]
+        cls, impl: "ENUM", **kw: Any
+    ) -> "ENUM":
         """Produce a MySQL native :class:`.mysql.ENUM` from plain
         :class:`.Enum`.
 
@@ -82,7 +87,7 @@ class ENUM(sqltypes.NativeForEmulated, sqltypes.Enum, _StringType):
         kw.setdefault("omit_aliases", impl._omit_aliases)
         return cls(**kw)
 
-    def _object_value_for_elem(self, elem):
+    def _object_value_for_elem(self, elem: str) -> str:
         # mysql sends back a blank string for any value that
         # was persisted that was not in the enums; that is, it does no
         # validation on the incoming data, it "truncates" it to be
@@ -92,7 +97,7 @@ class ENUM(sqltypes.NativeForEmulated, sqltypes.Enum, _StringType):
         else:
             return super()._object_value_for_elem(elem)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return util.generic_repr(
             self, to_inspect=[ENUM, _StringType, sqltypes.Enum]
         )
@@ -103,7 +108,7 @@ class SET(_StringType):
 
     __visit_name__ = "SET"
 
-    def __init__(self, *values, **kw):
+    def __init__(self, *values: str, **kw: Any):
         """Construct a SET.
 
         E.g.::
@@ -156,17 +161,19 @@ class SET(_StringType):
                 "setting retrieve_as_bitwise=True"
             )
         if self.retrieve_as_bitwise:
-            self._bitmap = {
+            self._inversed_bitmap: dict[str, int] = {
                 value: 2**idx for idx, value in enumerate(self.values)
             }
-            self._bitmap.update(
-                (2**idx, value) for idx, value in enumerate(self.values)
-            )
+            self._bitmap: dict[int, str] = {
+                2**idx: value for idx, value in enumerate(self.values)
+            }
         length = max([len(v) for v in values] + [0])
         kw.setdefault("length", length)
         super().__init__(**kw)
 
-    def column_expression(self, colexpr):
+    def column_expression(
+        self, colexpr: "ColumnElement[Any]"
+    ) -> "ColumnElement[Any]":
         if self.retrieve_as_bitwise:
             return sql.type_coerce(
                 sql.type_coerce(colexpr, sqltypes.Integer) + 0, self
@@ -174,10 +181,12 @@ class SET(_StringType):
         else:
             return colexpr
 
-    def result_processor(self, dialect, coltype):
+    def result_processor(  # type: ignore[override]
+        self, dialect: "Dialect", coltype: object
+    ) -> "_ResultProcessorType[set[str]]":
         if self.retrieve_as_bitwise:
 
-            def process(value):
+            def process(value: str | int | None) -> set[str] | None:
                 if value is not None:
                     value = int(value)
 
@@ -188,11 +197,12 @@ class SET(_StringType):
         else:
             super_convert = super().result_processor(dialect, coltype)
 
-            def process(value):
+            def process(value: str | set[str] | None) -> set[str] | None:  # type: ignore[misc]  # NOQA: E501
                 if isinstance(value, str):
                     # MySQLdb returns a string, let's parse
                     if super_convert:
                         value = super_convert(value)
+                        assert value is not None
                     return set(re.findall(r"[^,]+", value))
                 else:
                     # mysql-connector-python does a naive
@@ -209,7 +219,9 @@ class SET(_StringType):
         super_convert = super().bind_processor(dialect)
         if self.retrieve_as_bitwise:
 
-            def process(value: Any) -> str | int | None:
+            def process(
+                value: str | int | set[str] | None,
+            ) -> str | int | None:
                 if value is None:
                     return None
                 elif isinstance(value, (int, str)):
@@ -220,19 +232,21 @@ class SET(_StringType):
                 else:
                     int_value = 0
                     for v in value:
-                        int_value |= self._bitmap[v]
+                        int_value |= self._inversed_bitmap[v]
                     return int_value
 
         else:
 
-            def process(value: Any) -> str | int | None:
+            def process(
+                value: str | int | set[str] | None,
+            ) -> str | int | None:
                 # accept strings and int (actually bitflag) values directly
                 if value is not None and not isinstance(value, (int, str)):
                     value = ",".join(value)
                 if super_convert:
-                    return super_convert(value)  # type: ignore[no-any-return]
+                    return super_convert(value)  # type: ignore
                 else:
-                    return value  # type: ignore[no-any-return]
+                    return value
 
         return process
 

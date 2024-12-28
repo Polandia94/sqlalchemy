@@ -76,11 +76,13 @@ from .. import inspection
 from .. import util
 from ..util import HasMemoized_ro_memoized_attribute
 from ..util import TypingOnly
+from ..util._immutabledict_cy import immutabledict
 from ..util.typing import Literal
 from ..util.typing import ParamSpec
 from ..util.typing import Self
 from ..util.typing import TupleAny
 from ..util.typing import Unpack
+
 
 if typing.TYPE_CHECKING:
     from ._typing import _ByArgument
@@ -117,6 +119,7 @@ if typing.TYPE_CHECKING:
     from ..engine.interfaces import CoreExecuteOptionsParameter
     from ..engine.interfaces import SchemaTranslateMapType
     from ..engine.result import Result
+
 
 _NUMERIC = Union[float, Decimal]
 _NUMBER = Union[float, int, Decimal]
@@ -3875,8 +3878,6 @@ class BinaryExpression(OperatorExpression[_T]):
 
     """
 
-    modifiers: Mapping[str, Any]
-
     left: ColumnElement[Any]
     right: ColumnElement[Any]
 
@@ -3907,9 +3908,9 @@ class BinaryExpression(OperatorExpression[_T]):
         self._is_implicitly_boolean = operators.is_boolean(operator)
 
         if modifiers is None:
-            self.modifiers = {}
+            self.modifiers = immutabledict({})
         else:
-            self.modifiers = modifiers
+            self.modifiers = immutabledict(modifiers)
 
     @property
     def _flattened_operator_clauses(

@@ -2468,7 +2468,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
 
     def visit_DATETIME(self, type_: DATETIME, **kw: Any) -> str:
         if getattr(type_, "fsp", None):
-            return "DATETIME(%d)" % type_.fsp
+            return "DATETIME(%d)" % type_.fsp  # type: ignore[str-format]
         else:
             return "DATETIME"
 
@@ -2477,13 +2477,13 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
 
     def visit_TIME(self, type_: TIME, **kw: Any) -> str:
         if getattr(type_, "fsp", None):
-            return "TIME(%d)" % type_.fsp
+            return "TIME(%d)" % type_.fsp  # type: ignore[str-format]
         else:
             return "TIME"
 
     def visit_TIMESTAMP(self, type_: TIMESTAMP, **kw: Any) -> str:
         if getattr(type_, "fsp", None):
-            return "TIMESTAMP(%d)" % type_.fsp
+            return "TIMESTAMP(%d)" % type_.fsp  # type: ignore[str-format]
         else:
             return "TIMESTAMP"
 

@@ -7749,7 +7749,7 @@ class IdentifierPreparer:
 
     def format_column(
         self,
-        column: "Column",
+        column: "Column[Any]",
         use_table: bool = False,
         name: str | None = None,
         table_name: str | None = None,

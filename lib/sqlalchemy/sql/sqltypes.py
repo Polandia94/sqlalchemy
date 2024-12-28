@@ -249,7 +249,9 @@ class String(Concatenable, TypeEngine[str]):
     ) -> _BindProcessorType[str] | None:
         return None
 
-    def result_processor(self, dialect, coltype):
+    def result_processor(
+        self, dialect: Dialect, coltype: object
+    ) -> _ResultProcessorType[str] | None:
         return None
 
     @property
@@ -1467,7 +1469,7 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
             return self.enums
 
     def _enum_init(
-        self, enums: Sequence[str | enum.StrEnum], kw: dict[str, Any]
+        self, enums: Sequence[str | type[enum.StrEnum]], kw: dict[str, Any]
     ):
         """internal init for :class:`.Enum` and subclasses.
 
@@ -1478,7 +1480,9 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
         """
         self.native_enum = kw.pop("native_enum", True)
         self.create_constraint = kw.pop("create_constraint", False)
-        self.values_callable = kw.pop("values_callable", None)
+        self.values_callable: Callable[[type[enum.StrEnum]], Sequence[str]] = (
+            kw.pop("values_callable", None)
+        )
         self._sort_key_function = kw.pop("sort_key_function", NO_ARG)
         length_arg = kw.pop("length", NO_ARG)
         self._omit_aliases = kw.pop("omit_aliases", True)
@@ -1528,8 +1532,8 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
         )
 
     def _parse_into_values(
-        self, enums: Sequence[str | type[enum.StrEnum]], kw
-    ):
+        self, enums: Sequence[str | type[enum.StrEnum]], kw: Any
+    ) -> tuple[Sequence[str], Sequence[enum.StrEnum] | Sequence[str]]:
         if not enums and "_enums" in kw:
             enums = kw.pop("_enums")
 
@@ -1614,7 +1618,12 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
             self._generic_type_affinity(_enums=enum_args, **kw),  # type: ignore  # noqa: E501
         )
 
-    def _setup_for_values(self, values: list[str], objects, kw):
+    def _setup_for_values(
+        self,
+        values: Sequence[str],
+        objects: Sequence[enum.StrEnum] | Sequence[str],
+        kw: Any,
+    ) -> None:
         self.enums = list(values)
 
         self._valid_lookup = dict(zip(reversed(objects), reversed(values)))
@@ -1681,7 +1690,7 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
 
     comparator_factory = Comparator
 
-    def _object_value_for_elem(self, elem):
+    def _object_value_for_elem(self, elem: str) -> str:
         try:
             return self._object_lookup[elem]
         except KeyError as err:
