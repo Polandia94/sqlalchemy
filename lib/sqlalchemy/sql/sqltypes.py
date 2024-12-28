@@ -428,7 +428,7 @@ class NumericCommon(HasExpressionLookup, TypeEngineMixin, Generic[_N]):
     if TYPE_CHECKING:
 
         @util.ro_memoized_property
-        def _type_affinity(self) -> Type[NumericCommon[_N]]: ...
+        def _type_affinity(self) -> Type[Numeric | Float]: ...
 
     def __init__(
         self,
@@ -655,7 +655,7 @@ class Float(NumericCommon[_N], TypeEngine[_N]):
 
     __visit_name__ = "float"
 
-    scale = None
+    scale: int | None = None
 
     @overload
     def __init__(

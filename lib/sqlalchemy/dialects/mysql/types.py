@@ -30,29 +30,33 @@ class _NumericCommonType:
 
     """
 
-    def __init__(self, unsigned=False, zerofill=False, **kw):
+    def __init__(
+        self, unsigned: bool = False, zerofill: bool = False, **kw: Any
+    ):
         self.unsigned = unsigned
         self.zerofill = zerofill
         super().__init__(**kw)
 
 
-class _NumericType(_NumericCommonType, sqltypes.Numeric):
+class _NumericType(
+    _NumericCommonType, sqltypes.Numeric[decimal.Decimal | float]
+):
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return util.generic_repr(
             self,
             to_inspect=[_NumericType, _NumericCommonType, sqltypes.Numeric],
         )
 
 
-class _FloatType(_NumericCommonType, sqltypes.Float):
+class _FloatType(_NumericCommonType, sqltypes.Float[decimal.Decimal | float]):
 
     def __init__(
         self,
         precision: int | None = None,
         scale: int | None = None,
-        asdecimal=True,
-        **kw,
+        asdecimal: bool = True,
+        **kw: Any,
     ):
         if isinstance(self, (REAL, DOUBLE)) and (
             (precision is None and scale is not None)
@@ -65,18 +69,18 @@ class _FloatType(_NumericCommonType, sqltypes.Float):
         super().__init__(precision=precision, asdecimal=asdecimal, **kw)
         self.scale = scale
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return util.generic_repr(
             self, to_inspect=[_FloatType, _NumericCommonType, sqltypes.Float]
         )
 
 
 class _IntegerType(_NumericCommonType, sqltypes.Integer):
-    def __init__(self, display_width: int | None = None, **kw):
+    def __init__(self, display_width: int | None = None, **kw: Any):
         self.display_width = display_width
         super().__init__(**kw)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return util.generic_repr(
             self,
             to_inspect=[_IntegerType, _NumericCommonType, sqltypes.Integer],
@@ -107,20 +111,20 @@ class _StringType(sqltypes.String):
         self.national = national
         super().__init__(**kw)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return util.generic_repr(
             self, to_inspect=[_StringType, sqltypes.String]
         )
 
 
-class _MatchType(sqltypes.Float, sqltypes.MatchType):
-    def __init__(self, **kw):
+class _MatchType(sqltypes.Float[decimal.Decimal | float], sqltypes.MatchType):
+    def __init__(self, **kw: Any):
         # TODO: float arguments?
-        sqltypes.Float.__init__(self)
+        sqltypes.Float.__init__(self)  # type: ignore[arg-type]
         sqltypes.MatchType.__init__(self)
 
 
-class NUMERIC(_NumericType, sqltypes.NUMERIC):
+class NUMERIC(_NumericType, sqltypes.NUMERIC[decimal.Decimal | float]):
     """MySQL NUMERIC type."""
 
     __visit_name__ = "NUMERIC"
@@ -129,8 +133,8 @@ class NUMERIC(_NumericType, sqltypes.NUMERIC):
         self,
         precision: int | None = None,
         scale: int | None = None,
-        asdecimal=True,
-        **kw,
+        asdecimal: bool = True,
+        **kw: Any,
     ):
         """Construct a NUMERIC.
 
@@ -152,7 +156,7 @@ class NUMERIC(_NumericType, sqltypes.NUMERIC):
         )
 
 
-class DECIMAL(_NumericType, sqltypes.DECIMAL):
+class DECIMAL(_NumericType, sqltypes.DECIMAL[decimal.Decimal | float]):
     """MySQL DECIMAL type."""
 
     __visit_name__ = "DECIMAL"
@@ -161,8 +165,8 @@ class DECIMAL(_NumericType, sqltypes.DECIMAL):
         self,
         precision: int | None = None,
         scale: int | None = None,
-        asdecimal=True,
-        **kw,
+        asdecimal: bool = True,
+        **kw: Any,
     ):
         """Construct a DECIMAL.
 
@@ -184,7 +188,7 @@ class DECIMAL(_NumericType, sqltypes.DECIMAL):
         )
 
 
-class DOUBLE(_FloatType, sqltypes.DOUBLE):
+class DOUBLE(_FloatType, sqltypes.DOUBLE[decimal.Decimal | float]):
     """MySQL DOUBLE type."""
 
     __visit_name__ = "DOUBLE"
@@ -193,8 +197,8 @@ class DOUBLE(_FloatType, sqltypes.DOUBLE):
         self,
         precision: int | None = None,
         scale: int | None = None,
-        asdecimal=True,
-        **kw,
+        asdecimal: bool = True,
+        **kw: Any,
     ):
         """Construct a DOUBLE.
 
@@ -224,7 +228,7 @@ class DOUBLE(_FloatType, sqltypes.DOUBLE):
         )
 
 
-class REAL(_FloatType, sqltypes.REAL):
+class REAL(_FloatType, sqltypes.REAL[decimal.Decimal | float]):
     """MySQL REAL type."""
 
     __visit_name__ = "REAL"
@@ -233,8 +237,8 @@ class REAL(_FloatType, sqltypes.REAL):
         self,
         precision: int | None = None,
         scale: int | None = None,
-        asdecimal=True,
-        **kw,
+        asdecimal: bool = True,
+        **kw: Any,
     ):
         """Construct a REAL.
 
@@ -297,7 +301,7 @@ class FLOAT(_FloatType, sqltypes.FLOAT[decimal.Decimal | float]):
 
     def bind_processor(
         self, dialect: "Dialect"
-    ) -> "_BindProcessorType[float] | None":
+    ) -> "_BindProcessorType[decimal.Decimal | float] | None":
         return None
 
 

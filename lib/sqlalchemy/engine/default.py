@@ -630,7 +630,7 @@ class DefaultDialect(Dialect):
                 % (ident, self.max_identifier_length)
             )
 
-    def connect(self, *cargs: Any, **cparams: Any):
+    def connect(self, *cargs: Any, **cparams: Any):  # type: ignore[no-untyped-def]  # NOQA: E501
         # inherits the docstring from interfaces.Dialect.connect
         return self.loaded_dbapi.connect(*cargs, **cparams)
 
@@ -957,7 +957,14 @@ class DefaultDialect(Dialect):
     def do_execute_no_params(self, cursor, statement, context=None):
         cursor.execute(statement)
 
-    def is_disconnect(self, e, connection, cursor) -> bool:
+    def is_disconnect(
+        self,
+        e: Exception,
+        connection: (
+            pool.PoolProxiedConnection | interfaces.DBAPIConnection | None
+        ),
+        cursor: interfaces.DBAPICursor | None,
+    ) -> bool:
         return False
 
     @util.memoized_instancemethod
@@ -1773,10 +1780,10 @@ class DefaultExecutionContext(ExecutionContext):
     def fetchall_for_returning(self, cursor):
         return cursor.fetchall()
 
-    def create_default_cursor(self):
+    def create_default_cursor(self) -> DBAPICursor:
         return self._dbapi_connection.cursor()
 
-    def create_server_side_cursor(self):
+    def create_server_side_cursor(self) -> DBAPICursor:
         raise NotImplementedError()
 
     def pre_exec(self):

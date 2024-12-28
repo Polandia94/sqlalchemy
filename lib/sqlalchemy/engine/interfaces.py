@@ -242,7 +242,7 @@ _AnyMultiExecuteParams = _DBAPIMultiExecuteParams
 _AnyExecuteParams = _DBAPIAnyExecuteParams
 
 CompiledCacheType = MutableMapping[Any, "Compiled"]
-SchemaTranslateMapType = Mapping[Optional[str], Optional[str]]
+SchemaTranslateMapType = MutableMapping[Optional[str], Optional[str]]
 
 _ImmutableExecuteOptions = immutabledict[str, Any]
 

@@ -1047,6 +1047,7 @@ from typing import Any
 from typing import Callable
 from typing import cast
 from typing import NoReturn
+from typing import overload
 from typing import TYPE_CHECKING
 
 from . import reflection as _reflection
@@ -2132,7 +2133,7 @@ class MySQLDDLCompiler(compiler.DDLCompiler):
         index = create.element
         self._verify_index_table(index)
         preparer = self.preparer
-        table = preparer.format_table(index.table)
+        table = preparer.format_table(index.table)  # type: ignore[arg-type]
 
         columns = [
             self.sql_compiler.process(
@@ -2225,7 +2226,7 @@ class MySQLDDLCompiler(compiler.DDLCompiler):
 
         return text + "%s ON %s" % (
             self._prepared_index_name(index, include_schema=False),
-            self.preparer.format_table(index.table),
+            self.preparer.format_table(index.table),  # type: ignore[arg-type]
         )
 
     def visit_drop_constraint(
@@ -2346,7 +2347,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
     def _mysql_type(self, type_: Any) -> bool:
         return isinstance(type_, (_StringType, _NumericCommonType))
 
-    def visit_NUMERIC(self, type_: NUMERIC, **kw: Any) -> str:
+    def visit_NUMERIC(self, type_: NUMERIC, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if type_.precision is None:
             return self._extend_numeric(type_, "NUMERIC")
         elif type_.scale is None:
@@ -2361,7 +2362,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
                 % {"precision": type_.precision, "scale": type_.scale},
             )
 
-    def visit_DECIMAL(self, type_: DECIMAL, **kw: Any) -> str:
+    def visit_DECIMAL(self, type_: DECIMAL, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if type_.precision is None:
             return self._extend_numeric(type_, "DECIMAL")
         elif type_.scale is None:
@@ -2376,7 +2377,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
                 % {"precision": type_.precision, "scale": type_.scale},
             )
 
-    def visit_DOUBLE(self, type_: DOUBLE, **kw: Any) -> str:
+    def visit_DOUBLE(self, type_: DOUBLE, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if type_.precision is not None and type_.scale is not None:
             return self._extend_numeric(
                 type_,
@@ -2386,7 +2387,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
         else:
             return self._extend_numeric(type_, "DOUBLE")
 
-    def visit_REAL(self, type_: REAL, **kw: Any) -> str:
+    def visit_REAL(self, type_: REAL, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if type_.precision is not None and type_.scale is not None:
             return self._extend_numeric(
                 type_,
@@ -2396,7 +2397,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
         else:
             return self._extend_numeric(type_, "REAL")
 
-    def visit_FLOAT(self, type_: FLOAT, **kw: Any) -> str:
+    def visit_FLOAT(self, type_: FLOAT, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if (
             self._mysql_type(type_)
             and type_.scale is not None
@@ -2412,7 +2413,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
         else:
             return self._extend_numeric(type_, "FLOAT")
 
-    def visit_INTEGER(self, type_: INTEGER, **kw: Any) -> str:
+    def visit_INTEGER(self, type_: INTEGER, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if self._mysql_type(type_) and type_.display_width is not None:
             return self._extend_numeric(
                 type_,
@@ -2422,7 +2423,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
         else:
             return self._extend_numeric(type_, "INTEGER")
 
-    def visit_BIGINT(self, type_: BIGINT, **kw: Any) -> str:
+    def visit_BIGINT(self, type_: BIGINT, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if self._mysql_type(type_) and type_.display_width is not None:
             return self._extend_numeric(
                 type_,
@@ -2450,7 +2451,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
         else:
             return self._extend_numeric(type_, "TINYINT")
 
-    def visit_SMALLINT(self, type_: SMALLINT, **kw: Any) -> str:
+    def visit_SMALLINT(self, type_: SMALLINT, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if self._mysql_type(type_) and type_.display_width is not None:
             return self._extend_numeric(
                 type_,
@@ -2466,22 +2467,22 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
         else:
             return "BIT"
 
-    def visit_DATETIME(self, type_: DATETIME, **kw: Any) -> str:
+    def visit_DATETIME(self, type_: DATETIME, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if getattr(type_, "fsp", None):
             return "DATETIME(%d)" % type_.fsp  # type: ignore[str-format]
         else:
             return "DATETIME"
 
-    def visit_DATE(self, type_: DATE, **kw: Any) -> str:
+    def visit_DATE(self, type_: DATE, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         return "DATE"
 
-    def visit_TIME(self, type_: TIME, **kw: Any) -> str:
+    def visit_TIME(self, type_: TIME, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if getattr(type_, "fsp", None):
             return "TIME(%d)" % type_.fsp  # type: ignore[str-format]
         else:
             return "TIME"
 
-    def visit_TIMESTAMP(self, type_: TIMESTAMP, **kw: Any) -> str:
+    def visit_TIMESTAMP(self, type_: TIMESTAMP, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if getattr(type_, "fsp", None):
             return "TIMESTAMP(%d)" % type_.fsp  # type: ignore[str-format]
         else:
@@ -2493,7 +2494,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
         else:
             return "YEAR(%s)" % type_.display_width
 
-    def visit_TEXT(self, type_: TEXT, **kw: Any) -> str:
+    def visit_TEXT(self, type_: TEXT, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if type_.length is not None:
             return self._extend_string(type_, {}, "TEXT(%d)" % type_.length)
         else:
@@ -2508,7 +2509,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
     def visit_LONGTEXT(self, type_: LONGTEXT, **kw: Any) -> str:
         return self._extend_string(type_, {}, "LONGTEXT")
 
-    def visit_VARCHAR(self, type_: VARCHAR, **kw: Any) -> str:
+    def visit_VARCHAR(self, type_: VARCHAR, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if type_.length is not None:
             return self._extend_string(type_, {}, "VARCHAR(%d)" % type_.length)
         else:
@@ -2516,7 +2517,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
                 "VARCHAR requires a length on dialect %s" % self.dialect.name
             )
 
-    def visit_CHAR(self, type_: CHAR, **kw: Any) -> str:
+    def visit_CHAR(self, type_: CHAR, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if type_.length is not None:
             return self._extend_string(
                 type_, {}, "CHAR(%(length)s)" % {"length": type_.length}
@@ -2524,7 +2525,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
         else:
             return self._extend_string(type_, {}, "CHAR")
 
-    def visit_NVARCHAR(self, type_: NVARCHAR, **kw: Any) -> str:
+    def visit_NVARCHAR(self, type_: NVARCHAR, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         # We'll actually generate the equiv. "NATIONAL VARCHAR" instead
         # of "NVARCHAR".
         if type_.length is not None:
@@ -2538,7 +2539,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
                 "NVARCHAR requires a length on dialect %s" % self.dialect.name
             )
 
-    def visit_NCHAR(self, type_: NCHAR, **kw: Any) -> str:
+    def visit_NCHAR(self, type_: NCHAR, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         # We'll actually generate the equiv.
         # "NATIONAL CHAR" instead of "NCHAR".
         if type_.length is not None:
@@ -2550,7 +2551,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
         else:
             return self._extend_string(type_, {"national": True}, "CHAR")
 
-    def visit_UUID(self, type_: UUID[sqltypes._UUID_RETURN], **kw: Any) -> str:
+    def visit_UUID(self, type_: UUID[sqltypes._UUID_RETURN], **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         return "UUID"
 
     def visit_VARBINARY(self, type_: VARBINARY, **kw: Any) -> str:
@@ -2562,7 +2563,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
     def visit_large_binary(self, type_: LargeBinary, **kw: Any) -> str:
         return self.visit_BLOB(type_)
 
-    def visit_enum(self, type_: ENUM, **kw: Any) -> str:
+    def visit_enum(self, type_: ENUM, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if not type_.native_enum:
             return super().visit_enum(type_)
         else:
@@ -2601,7 +2602,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
     def visit_SET(self, type_: SET, **kw: Any) -> str:
         return self._visit_enumerated_values("SET", type_, type_.values)
 
-    def visit_BOOLEAN(self, type_: BOOLEAN, **kw: Any) -> str:
+    def visit_BOOLEAN(self, type_: sqltypes.Boolean, **kw: Any) -> str:
         return "BOOL"
 
 
@@ -3717,6 +3718,24 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         # as of MySQL 5.0.1
         self._backslash_escapes = "NO_BACKSLASH_ESCAPES" not in mode
 
+    @overload
+    def _show_create_table(
+        self,
+        connection: "Connection",
+        table: "Table | None",
+        charset: str | None,
+        full_name: str,
+    ) -> str: ...
+
+    @overload
+    def _show_create_table(
+        self,
+        connection: "Connection",
+        table: "Table",
+        charset: str | None = None,
+        full_name: None = None,
+    ) -> str: ...
+
     def _show_create_table(
         self,
         connection: "Connection",
@@ -3727,6 +3746,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         """Run SHOW CREATE TABLE for a ``Table``."""
 
         if full_name is None:
+            assert table is not None
             full_name = self.identifier_preparer.format_table(table)
         st = "SHOW CREATE TABLE %s" % full_name
 
@@ -3745,6 +3765,24 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
             raise exc.NoSuchTableError(full_name)
         return row[1].strip()
 
+    @overload
+    def _describe_table(
+        self,
+        connection: Connection,
+        table: Table | None,
+        charset: str | None,
+        full_name: str,
+    ) -> Sequence[Row[Unpack[tuple[Any, ...]]]] | Sequence[_DecodingRow]: ...
+
+    @overload
+    def _describe_table(
+        self,
+        connection: Connection,
+        table: Table,
+        charset: str | None = None,
+        full_name: None = None,
+    ) -> Sequence[Row[Unpack[tuple[Any, ...]]]] | Sequence[_DecodingRow]: ...
+
     def _describe_table(
         self,
         connection: Connection,
@@ -3755,6 +3793,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         """Run DESCRIBE for a ``Table`` and return processed rows."""
 
         if full_name is None:
+            assert table is not None
             full_name = self.identifier_preparer.format_table(table)
         st = "DESCRIBE %s" % full_name
 
