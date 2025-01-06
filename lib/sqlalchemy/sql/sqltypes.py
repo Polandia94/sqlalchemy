@@ -430,7 +430,11 @@ class NumericCommon(HasExpressionLookup, TypeEngineMixin, Generic[_N]):
     if TYPE_CHECKING:
 
         @util.ro_memoized_property
-        def _type_affinity(self) -> Type[Numeric | Float]: ...
+        def _type_affinity(
+            self,
+        ) -> Type[
+            Numeric[decimal.Decimal | float] | Float[decimal.Decimal | float]
+        ]: ...
 
     def __init__(
         self,
@@ -1329,6 +1333,8 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
 
     __visit_name__ = "enum"
 
+    enum_class: None | str | type[enum.StrEnum]
+
     def __init__(self, *enums: object, **kw: Any):
         r"""Construct an enum.
 
@@ -1461,7 +1467,7 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
            .. versionchanged:: 2.0 This parameter now defaults to True.
 
         """
-        self._enum_init(enums, kw)
+        self._enum_init(enums, kw)  # type: ignore[arg-type]
 
     @property
     def _enums_argument(self):
@@ -1472,7 +1478,7 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
 
     def _enum_init(
         self, enums: Sequence[str | type[enum.StrEnum]], kw: dict[str, Any]
-    ):
+    ) -> None:
         """internal init for :class:`.Enum` and subclasses.
 
         friendly init helper used by subclasses to remove
@@ -1482,9 +1488,9 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
         """
         self.native_enum = kw.pop("native_enum", True)
         self.create_constraint = kw.pop("create_constraint", False)
-        self.values_callable: Callable[[type[enum.StrEnum]], Sequence[str]] = (
-            kw.pop("values_callable", None)
-        )
+        self.values_callable: (
+            Callable[[type[enum.StrEnum]], Sequence[str]] | None
+        ) = kw.pop("values_callable", None)
         self._sort_key_function = kw.pop("sort_key_function", NO_ARG)
         length_arg = kw.pop("length", NO_ARG)
         self._omit_aliases = kw.pop("omit_aliases", True)
@@ -1512,7 +1518,7 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
                 )
             length = length_arg
 
-        self._valid_lookup[None] = self._object_lookup[None] = None
+        self._valid_lookup[None] = self._object_lookup[None] = None  # type: ignore # noqa: E501
 
         super().__init__(length=length)
 
@@ -1521,7 +1527,7 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
         # this is a template enum that will be used to generate
         # new Enum classes.
         if self.enum_class and values:
-            kw.setdefault("name", self.enum_class.__name__.lower())
+            kw.setdefault("name", self.enum_class.__name__.lower())  # type: ignore[union-attr] # noqa: E501
         SchemaType.__init__(
             self,
             name=kw.pop("name", None),
@@ -1550,16 +1556,16 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
                     (n, v) for n, v in _members.items() if v.name == n
                 )
             else:
-                members = _members
+                members = _members  # type: ignore[assignment]
             if self.values_callable:
-                values = self.values_callable(self.enum_class)
+                values = self.values_callable(self.enum_class)  # type: ignore[arg-type] # noqa: E501
             else:
                 values = list(members)
             objects = [members[k] for k in members]
             return values, objects
         else:
             self.enum_class = None
-            return enums, enums
+            return enums, enums  # type: ignore[return-value]
 
     def _resolve_for_literal(self, value: Any) -> Enum:
         tv = type(value)
@@ -1657,9 +1663,11 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
     ) -> None:
         self.enums = list(values)
 
-        self._valid_lookup = dict(zip(reversed(objects), reversed(values)))
+        self._valid_lookup: dict[str, str] = dict(
+            zip(reversed(objects), reversed(values))
+        )
 
-        self._object_lookup = dict(zip(values, objects))
+        self._object_lookup: dict[str, str] = dict(zip(values, objects))
 
         self._valid_lookup.update(
             [
@@ -3704,7 +3712,7 @@ class Uuid(Emulated, TypeEngine[_UUID_RETURN]):
 
     def bind_processor(
         self, dialect: Dialect
-    ) -> "_BindProcessorType[str] | None":
+    ) -> "_BindProcessorType[_UUID_RETURN] | None":
         character_based_uuid = (
             not dialect.supports_native_uuid or not self.native_uuid
         )
@@ -3715,7 +3723,7 @@ class Uuid(Emulated, TypeEngine[_UUID_RETURN]):
                 def process(value: Any) -> str:
                     if value is not None:
                         value = value.hex
-                    return value
+                    return value  # type: ignore[no-any-return]
 
                 return process
             else:
@@ -3723,7 +3731,7 @@ class Uuid(Emulated, TypeEngine[_UUID_RETURN]):
                 def process(value: Any) -> str:
                     if value is not None:
                         value = value.replace("-", "")
-                    return value
+                    return value  # type: ignore[no-any-return]
 
                 return process
         else:

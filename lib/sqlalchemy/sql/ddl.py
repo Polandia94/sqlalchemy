@@ -716,7 +716,7 @@ class CreateIndex(_CreateBase):
     __visit_name__ = "create_index"
     element: "Index"
 
-    def __init__(self, element: "Index", if_not_exists=False):
+    def __init__(self, element: "Index", if_not_exists: bool = False):
         """Create a :class:`.Createindex` construct.
 
         :param element: a :class:`_schema.Index` that's the subject
@@ -737,7 +737,7 @@ class DropIndex(_DropBase):
 
     element: "Index"
 
-    def __init__(self, element: "Index", if_exists=False):
+    def __init__(self, element: "Index", if_exists: bool = False):
         """Create a :class:`.DropIndex` construct.
 
         :param element: a :class:`_schema.Index` that's the subject
@@ -796,7 +796,7 @@ class SetColumnComment(_CreateDropBase):
     """Represent a COMMENT ON COLUMN IS statement."""
 
     __visit_name__ = "set_column_comment"
-    element: "Column"
+    element: "Column[Any]"
 
 
 class DropColumnComment(_CreateDropBase):

@@ -2219,8 +2219,8 @@ class TypeClause(DQLDMLClauseElement):
         ("type", InternalTraversal.dp_type)
     ]
 
-    def __init__(self, type_: TypeEngine):
-        self.type: TypeEngine = type_
+    def __init__(self, type_: TypeEngine[Any]):
+        self.type: TypeEngine[Any] = type_
 
 
 class TextClause(
@@ -3908,7 +3908,7 @@ class BinaryExpression(OperatorExpression[_T]):
         self._is_implicitly_boolean = operators.is_boolean(operator)
 
         if modifiers is None:
-            self.modifiers = immutabledict({})
+            self.modifiers: immutabledict[str, str] = immutabledict({})
         else:
             self.modifiers = immutabledict(modifiers)
 

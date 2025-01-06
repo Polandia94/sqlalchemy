@@ -1669,7 +1669,9 @@ class MySQLCompiler(compiler.SQLCompiler):
 
         return "CAST(%s AS %s)" % (self.process(cast.clause, **kw), type_)
 
-    def render_literal_value(self, value: str, type_: sqltypes.String) -> str:
+    def render_literal_value(
+        self, value: str | None, type_: sqltypes.String
+    ) -> str:
         value = super().render_literal_value(value, type_)
         if self.dialect._backslash_escapes:
             value = value.replace("\\", "\\\\")

@@ -40,10 +40,10 @@ def _auto_fn(name: str) -> Optional[Callable[[], Type[Dialect]]]:
             # hardcoded.   if mysql / mariadb etc were third party dialects
             # they would just publish all the entrypoints, which would actually
             # look much nicer.
-            module: "mariadb" = __import__(
+            module: "mariadb" = __import__(  # type: ignore[valid-type]
                 "sqlalchemy.dialects.mysql.mariadb"
             ).dialects.mysql.mariadb
-            return module.loader(driver)
+            return module.loader(driver)  # type: ignore
         else:
             module = __import__("sqlalchemy.dialects.%s" % (dialect,)).dialects
             module = getattr(module, dialect)
@@ -52,7 +52,7 @@ def _auto_fn(name: str) -> Optional[Callable[[], Type[Dialect]]]:
 
     if hasattr(module, driver):
         module = getattr(module, driver)
-        return lambda: module.dialect
+        return lambda: module.dialect  # type: ignore[attr-defined]
     else:
         return None
 

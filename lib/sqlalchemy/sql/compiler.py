@@ -111,6 +111,7 @@ if typing.TYPE_CHECKING:
     from .dml import Insert
     from .dml import Update
     from .dml import UpdateBase
+    from .dml import UpdateDMLState
     from .dml import ValuesBase
     from .elements import _truncated_label
     from .elements import BindParameter
@@ -142,6 +143,7 @@ if typing.TYPE_CHECKING:
     from ..engine.interfaces import _MutableCoreSingleExecuteParams
     from ..engine.interfaces import Dialect
     from ..engine.interfaces import SchemaTranslateMapType
+
 
 _FromHintsType = Dict["FromClause", str]
 
@@ -2988,7 +2990,9 @@ class SQLCompiler(Compiled):
             % self.dialect.name
         )
 
-    def function_argspec(self, func: functions.GenericFunction, **kwargs):
+    def function_argspec(
+        self, func: functions.Function[Any], **kwargs: Any
+    ) -> str:
         return func.clause_expr._compiler_dispatch(self, **kwargs)
 
     def visit_compound_select(
@@ -3453,7 +3457,7 @@ class SQLCompiler(Compiled):
 
     def _generate_generic_binary(
         self,
-        binary: elements.BinaryExpression,
+        binary: elements.BinaryExpression[Any],
         opstring: str,
         eager_grouping: bool = False,
         **kw: Any,
@@ -3626,14 +3630,16 @@ class SQLCompiler(Compiled):
             **kw,
         )
 
-    def visit_regexp_match_op_binary(self, binary, operator, **kw: Any) -> str:
+    def visit_regexp_match_op_binary(
+        self, binary: elements.BinaryExpression[Any], operator: Any, **kw: Any
+    ) -> str:
         raise exc.CompileError(
             "%s dialect does not support regular expressions"
             % self.dialect.name
         )
 
     def visit_not_regexp_match_op_binary(
-        self, binary, operator, **kw: Any
+        self, binary: elements.BinaryExpression[Any], operator: Any, **kw: Any
     ) -> str:
         raise exc.CompileError(
             "%s dialect does not support regular expressions"
@@ -3641,7 +3647,7 @@ class SQLCompiler(Compiled):
         )
 
     def visit_regexp_replace_op_binary(
-        self, binary, operator, **kw: Any
+        self, binary: elements.BinaryExpression[Any], operator: Any, **kw: Any
     ) -> str:
         raise exc.CompileError(
             "%s dialect does not support regular expression replacements"
@@ -3849,7 +3855,9 @@ class SQLCompiler(Compiled):
         else:
             return self.render_literal_value(value, bindparam.type)
 
-    def render_literal_value(self, value, type_: sqltypes.String) -> str:
+    def render_literal_value(
+        self, value: str | None, type_: sqltypes.String
+    ) -> str:
         """Render the value of a bind parameter as a quoted literal.
 
         This is used for statement sections that do not accept bind parameters
@@ -4610,7 +4618,7 @@ class SQLCompiler(Compiled):
     def get_select_hint_text(self, byfroms):
         return None
 
-    def get_from_hint_text(self, table, text) -> str | None:
+    def get_from_hint_text(self, table: Any, text: str | None) -> str | None:
         return None
 
     def get_crud_hint_text(self, table, text):
@@ -5095,7 +5103,7 @@ class SQLCompiler(Compiled):
         else:
             return "WITH"
 
-    def get_select_precolumns(self, select: Select, **kw: Any) -> str:
+    def get_select_precolumns(self, select: Select[Any], **kw: Any) -> str:
         """Called when building a ``SELECT`` statement, position is just
         before column list.
 
@@ -6121,7 +6129,7 @@ class SQLCompiler(Compiled):
 
         return text
 
-    def update_limit_clause(self, update_stmt) -> str | None:
+    def update_limit_clause(self, update_stmt: "Update") -> str | None:
         """Provide a hook for MySQL to add LIMIT to the UPDATE"""
         return None
 
@@ -6153,11 +6161,14 @@ class SQLCompiler(Compiled):
             "criteria within UPDATE"
         )
 
-    def visit_update(self, update_stmt: "Update", visiting_cte=None, **kw):
-        compile_state = update_stmt._compile_state_factory(
-            update_stmt, self, **kw
+    def visit_update(
+        self, update_stmt: "Update", visiting_cte: CTE | None = None, **kw: Any
+    ) -> str:
+        compile_state = update_stmt._compile_state_factory(  # type: ignore
+            update_stmt, self, **kw  # type: ignore
         )
-        update_stmt = compile_state.statement
+        compile_state = cast("UpdateDMLState", compile_state)
+        update_stmt = compile_state.statement  # type: ignore[assignment]
 
         if visiting_cte is not None:
             kw["visiting_cte"] = visiting_cte
@@ -6278,7 +6289,7 @@ class SQLCompiler(Compiled):
         ) and not self.returning_precedes_values:
             text += " " + self.returning_clause(
                 update_stmt,
-                self.implicit_returning or update_stmt._returning,  # type: ignore[arg-type]  # NOQA: E501
+                self.implicit_returning or update_stmt._returning,  # type: ignore[arg-type] # noqa: E501
                 populate_result_map=toplevel,
             )
 
