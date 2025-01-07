@@ -150,7 +150,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
             return (0, 0, 0)
 
     @util.langhelpers.memoized_property
-    def supports_server_side_cursors(self) -> bool:  # type: ignore[override]
+    def supports_server_side_cursors(self) -> bool:
         try:
             cursors = __import__("MySQLdb.cursors").cursors
             self._sscursor = cursors.SSCursor
@@ -169,7 +169,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
             if super_ is not None:
                 super_(conn)
 
-            charset_name = conn.character_set_name()
+            charset_name = conn.character_set_name()  # type: ignore[no-untyped-call]  # NOQA: E501
 
             if charset_name is not None:
                 cursor = conn.cursor()
@@ -178,13 +178,13 @@ class MySQLDialect_mysqldb(MySQLDialect):
 
         return on_connect
 
-    def do_ping(self, dbapi_connection: "MySQLdb.Connection") -> Literal[True]:
-        dbapi_connection.ping()
+    def do_ping(self, dbapi_connection: "MySQLdb.Connection") -> Literal[True]:  # type: ignore[override] # NOQA: E501
+        dbapi_connection.ping()  # type: ignore[no-untyped-call]
         return True
 
     def do_executemany(
         self,
-        cursor: "MySQLdb.cursors.Cursor",
+        cursor: "MySQLdb.cursors.Cursor",  # type: ignore[override]
         statement: LiteralString,
         parameters: Iterable[Any],
         context: MySQLExecutionContext_mysqldb | None = None,  # type: ignore
@@ -249,7 +249,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
     def _found_rows_client_flag(self) -> int | None:
         if self.dbapi is not None:
             try:
-                CLIENT_FLAGS: "MySQLdb.constants.CLIENT" = __import__(
+                CLIENT_FLAGS: "MySQLdb.constants.CLIENT" = __import__(  # type: ignore[valid-type] # NOQA: E501
                     self.dbapi.__name__ + ".constants.CLIENT"
                 ).constants.CLIENT
             except (AttributeError, ImportError):
@@ -292,14 +292,14 @@ class MySQLDialect_mysqldb(MySQLDialect):
             "AUTOCOMMIT",
         )
 
-    def set_isolation_level(
+    def set_isolation_level(  # type: ignore[override]
         self, dbapi_connection: "MySQLdb.Connection", level: "IsolationLevel"
     ) -> None:
         if level == "AUTOCOMMIT":
             dbapi_connection.autocommit(True)
         else:
             dbapi_connection.autocommit(False)
-            super().set_isolation_level(dbapi_connection, level)
+            super().set_isolation_level(dbapi_connection, level)  # type: ignore[arg-type] # NOQA: E501
 
 
 dialect = MySQLDialect_mysqldb

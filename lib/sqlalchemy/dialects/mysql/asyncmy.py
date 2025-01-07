@@ -45,8 +45,8 @@ from ...util.concurrency import await_
 
 if TYPE_CHECKING:
     from _typeshed import ReadableBuffer
-    from asyncmy.connection import Connection as AsyncmyConnection
-    from asyncmy.pool import pool as AsyncmyPool
+    from asyncmy.connection import Connection as AsyncmyConnection  # type: ignore
+    from asyncmy.pool import pool as AsyncmyPool  # type: ignore
 
     from ...connectors.asyncio import AsyncIODBAPIConnection
     from ...connectors.asyncio import AsyncIODBAPICursor
@@ -198,7 +198,7 @@ class MySQLDialect_asyncmy(MySQLDialect_pymysql):
             )
 
     def _found_rows_client_flag(self) -> int:
-        from asyncmy.constants import CLIENT
+        from asyncmy.constants import CLIENT  # type: ignore[import-untyped]
 
         return CLIENT.FOUND_ROWS  # type: ignore[no-any-return]
 

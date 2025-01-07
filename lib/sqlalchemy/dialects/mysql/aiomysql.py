@@ -41,10 +41,10 @@ from ...connectors.asyncio import AsyncIODBAPICursor
 from ...util.concurrency import await_
 
 if TYPE_CHECKING:
-    from aiomysql.connection import Connection as AiomysqlConnection
-    from aiomysql.cursors import Cursor as AiomysqlCursor
+    from aiomysql.connection import Connection as AiomysqlConnection  # type: ignore
+    from aiomysql.cursors import Cursor as AiomysqlCursor  # type: ignore
     from aiomysql.cursors import SSCursor as AiomysqlSSCursor
-    from aiomysql.pool import Pool as AiomysqlPool
+    from aiomysql.pool import Pool as AiomysqlPool  # type: ignore
 
     from ...connectors.asyncio import AsyncIODBAPIConnection
     from ...engine.interfaces import ConnectArgsType

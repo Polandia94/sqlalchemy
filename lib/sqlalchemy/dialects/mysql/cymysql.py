@@ -32,7 +32,7 @@ from .types import BIT
 from ... import util
 
 if TYPE_CHECKING:
-    import cymysql
+    import cymysql  # type: ignore
 
     from ...engine.base import Connection
     from ...engine.interfaces import Dialect

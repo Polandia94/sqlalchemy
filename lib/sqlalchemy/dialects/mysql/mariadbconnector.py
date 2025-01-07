@@ -43,7 +43,7 @@ from ... import util
 from ...sql import sqltypes
 
 if TYPE_CHECKING:
-    import mariadb
+    import mariadb  # type: ignore
 
     from ...engine.base import Connection
     from ...engine.interfaces import ConnectArgsType

@@ -59,7 +59,7 @@ from ...connectors.pyodbc import PyODBCConnector
 from ...sql.sqltypes import Time
 
 if TYPE_CHECKING:
-    import pyodbc
+    import pyodbc  # type: ignore
 
     from ...engine import Connection
     from ...engine.interfaces import Dialect
