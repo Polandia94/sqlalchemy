@@ -41,7 +41,7 @@ from ...connectors.asyncio import AsyncIODBAPICursor
 from ...util.concurrency import await_
 
 if TYPE_CHECKING:
-    from aiomysql.connection import Connection as AiomysqlConnection  # type: ignore
+    from aiomysql.connection import Connection as AiomysqlConnection  # type: ignore  # NOQA: E501
     from aiomysql.cursors import Cursor as AiomysqlCursor  # type: ignore
     from aiomysql.cursors import SSCursor as AiomysqlSSCursor
     from aiomysql.pool import Pool as AiomysqlPool  # type: ignore

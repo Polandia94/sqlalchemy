@@ -45,7 +45,7 @@ from ...util.concurrency import await_
 
 if TYPE_CHECKING:
     from _typeshed import ReadableBuffer
-    from asyncmy.connection import Connection as AsyncmyConnection  # type: ignore
+    from asyncmy.connection import Connection as AsyncmyConnection  # type: ignore  # NOQA: E501
     from asyncmy.pool import pool as AsyncmyPool  # type: ignore
 
     from ...connectors.asyncio import AsyncIODBAPIConnection
