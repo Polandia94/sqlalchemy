@@ -4,6 +4,7 @@
 #
 # This module is part of SQLAlchemy and is released under
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
+# mypy: disable-error-code="import-untyped"
 
 r"""
 .. dialect:: mysql+asyncmy
@@ -45,8 +46,8 @@ from ...util.concurrency import await_
 
 if TYPE_CHECKING:
     from _typeshed import ReadableBuffer
-    from asyncmy.connection import Connection as AsyncmyConnection  # type: ignore  # NOQA: E501
-    from asyncmy.pool import pool as AsyncmyPool  # type: ignore
+    from asyncmy.connection import Connection as AsyncmyConnection
+    from asyncmy.pool import pool as AsyncmyPool
 
     from ...connectors.asyncio import AsyncIODBAPIConnection
     from ...connectors.asyncio import AsyncIODBAPICursor

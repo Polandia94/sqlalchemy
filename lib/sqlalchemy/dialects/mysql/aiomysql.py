@@ -4,6 +4,7 @@
 #
 # This module is part of SQLAlchemy and is released under
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
+# mypy: disable-error-code="import-untyped"
 
 r"""
 .. dialect:: mysql+aiomysql
@@ -41,10 +42,10 @@ from ...connectors.asyncio import AsyncIODBAPICursor
 from ...util.concurrency import await_
 
 if TYPE_CHECKING:
-    from aiomysql.connection import Connection as AiomysqlConnection  # type: ignore  # NOQA: E501
-    from aiomysql.cursors import Cursor as AiomysqlCursor  # type: ignore
+    from aiomysql.connection import Connection as AiomysqlConnection
+    from aiomysql.cursors import Cursor as AiomysqlCursor
     from aiomysql.cursors import SSCursor as AiomysqlSSCursor
-    from aiomysql.pool import Pool as AiomysqlPool  # type: ignore
+    from aiomysql.pool import Pool as AiomysqlPool
 
     from ...connectors.asyncio import AsyncIODBAPIConnection
     from ...engine.interfaces import ConnectArgsType

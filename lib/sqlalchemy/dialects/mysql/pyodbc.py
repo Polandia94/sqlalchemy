@@ -4,6 +4,7 @@
 #
 # This module is part of SQLAlchemy and is released under
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
+# mypy: disable-error-code="import-untyped"
 
 
 r"""
@@ -59,7 +60,7 @@ from ...connectors.pyodbc import PyODBCConnector
 from ...sql.sqltypes import Time
 
 if TYPE_CHECKING:
-    import pyodbc  # type: ignore
+    import pyodbc
 
     from ...engine import Connection
     from ...engine.interfaces import Dialect

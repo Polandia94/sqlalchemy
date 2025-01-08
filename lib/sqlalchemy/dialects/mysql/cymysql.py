@@ -4,6 +4,7 @@
 #
 # This module is part of SQLAlchemy and is released under
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
+# mypy: disable-error-code="import-untyped"
 
 r"""
 
@@ -32,7 +33,7 @@ from .types import BIT
 from ... import util
 
 if TYPE_CHECKING:
-    import cymysql  # type: ignore
+    import cymysql
 
     from ...engine.base import Connection
     from ...engine.interfaces import Dialect

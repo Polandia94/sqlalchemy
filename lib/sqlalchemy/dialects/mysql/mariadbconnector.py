@@ -4,6 +4,7 @@
 #
 # This module is part of SQLAlchemy and is released under
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
+# mypy: disable-error-code="import-untyped"
 
 
 """
@@ -43,7 +44,7 @@ from ... import util
 from ...sql import sqltypes
 
 if TYPE_CHECKING:
-    import mariadb  # type: ignore
+    import mariadb
 
     from ...engine.base import Connection
     from ...engine.interfaces import ConnectArgsType
