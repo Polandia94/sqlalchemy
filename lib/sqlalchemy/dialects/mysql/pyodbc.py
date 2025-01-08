@@ -4,7 +4,7 @@
 #
 # This module is part of SQLAlchemy and is released under
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
-# mypy: disable-error-code="import-untyped"
+# mypy: disable-error-code="import-not-found"
 
 
 r"""
