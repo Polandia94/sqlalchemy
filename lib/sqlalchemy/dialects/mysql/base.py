@@ -1604,7 +1604,9 @@ class MySQLCompiler(compiler.SQLCompiler):
 
         return "MATCH (%s) AGAINST (%s)" % (match_clause, against_clause)
 
-    def get_from_hint_text(self, table: Any, text: str | None) -> str | None:
+    def get_from_hint_text(
+        self, table: selectable.FromClause, text: str | None
+    ) -> str | None:
         return text
 
     def visit_typeclause(
@@ -2140,7 +2142,7 @@ class MySQLDDLCompiler(compiler.DDLCompiler):
         columns = [
             self.sql_compiler.process(
                 (
-                    elements.Grouping(expr)
+                    elements.Grouping(expr)  # type: ignore[arg-type]
                     if (
                         isinstance(expr, elements.BinaryExpression)
                         or (
@@ -2556,13 +2558,14 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
     def visit_UUID(self, type_: UUID[sqltypes._UUID_RETURN], **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         return "UUID"
 
-    def visit_VARBINARY(self, type_: VARBINARY, **kw: Any) -> str:
+    def visit_VARBINARY(self, type_: VARBINARY, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
+        type_.length = cast(int, type_.length)
         return "VARBINARY(%d)" % type_.length
 
     def visit_JSON(self, type_: JSON, **kw: Any) -> str:
         return "JSON"
 
-    def visit_large_binary(self, type_: LargeBinary, **kw: Any) -> str:
+    def visit_large_binary(self, type_: LargeBinary, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         return self.visit_BLOB(type_)
 
     def visit_enum(self, type_: ENUM, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
@@ -2571,7 +2574,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
         else:
             return self._visit_enumerated_values("ENUM", type_, type_.enums)
 
-    def visit_BLOB(self, type_: LargeBinary, **kw: Any) -> str:
+    def visit_BLOB(self, type_: LargeBinary, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         if type_.length is not None:
             return "BLOB(%d)" % type_.length
         else:
@@ -2604,7 +2607,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
     def visit_SET(self, type_: SET, **kw: Any) -> str:
         return self._visit_enumerated_values("SET", type_, type_.values)
 
-    def visit_BOOLEAN(self, type_: sqltypes.Boolean, **kw: Any) -> str:
+    def visit_BOOLEAN(self, type_: sqltypes.Boolean, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         return "BOOL"
 
 
@@ -2789,7 +2792,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         try:
             cursor = conn.cursor()
             cursor.execute("SELECT VERSION() LIKE '%MariaDB%'")
-            val = cursor.fetchone()[0]
+            val = cursor.fetchone()[0]  # type: ignore[index]
         except:
             raise
         else:
@@ -3525,7 +3528,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
                 dialect_options["%s_length" % self.name] = mysql_length
 
             if flavor:
-                index_d["type"] = flavor
+                index_d["type"] = flavor  # type: ignore[typeddict-unknown-key]
 
             if dialect_options:
                 index_d["dialect_options"] = dialect_options

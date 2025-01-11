@@ -74,6 +74,7 @@ class match(Generative, elements.BinaryExpression[Any]):
     __visit_name__ = "mysql_match"
 
     inherit_cache = True
+    modifiers: util.immutabledict[str, Any]
 
     def __init__(self, *cols: elements.ColumnElement[Any], **kw: Any):
         if not cols:

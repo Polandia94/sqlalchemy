@@ -5,11 +5,14 @@
 # This module is part of SQLAlchemy and is released under
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
 
+from __future__ import annotations
 
+import enum
 from enum import StrEnum
 import re
 from typing import Any
 from typing import TYPE_CHECKING
+from typing import Union
 
 from .types import _StringType
 from ... import exc
@@ -87,7 +90,7 @@ class ENUM(type_api.NativeForEmulated, sqltypes.Enum, _StringType):
         kw.setdefault("omit_aliases", impl._omit_aliases)
         return cls(**kw)
 
-    def _object_value_for_elem(self, elem: str) -> str:
+    def _object_value_for_elem(self, elem: str) -> Union[str, enum.Enum]:
         # mysql sends back a blank string for any value that
         # was persisted that was not in the enums; that is, it does no
         # validation on the incoming data, it "truncates" it to be
