@@ -21,12 +21,15 @@ r"""
     The recommended MySQL dialects are mysqlclient and PyMySQL.
 
 """  # noqa
+from __future__ import annotations
 
 import re
 from types import ModuleType
 from typing import Any
+from typing import Optional
 from typing import Sequence
 from typing import TYPE_CHECKING
+from typing import Union
 
 from .base import MySQLCompiler
 from .base import MySQLDialect
@@ -48,9 +51,9 @@ if TYPE_CHECKING:
     from ...sql.elements import BinaryExpression
     from ...util.typing import TupleAny
 
-    dbapi_connection = (
-        connector.pooling.PooledMySQLConnection | MySQLConnectionAbstract
-    )
+    dbapi_connection = Union[
+        connector.pooling.PooledMySQLConnection, MySQLConnectionAbstract
+    ]
 
 
 class MySQLCompiler_mysqlconnector(MySQLCompiler):
@@ -159,7 +162,7 @@ class MySQLDialect_mysqlconnector(MySQLDialect):
         return [], opts
 
     @util.memoized_property
-    def _mysqlconnector_version_info(self) -> None | tuple[int, ...]:
+    def _mysqlconnector_version_info(self) -> Optional[tuple[int, ...]]:
         if self.dbapi and hasattr(self.dbapi, "__version__"):
             m = re.match(r"(\d+)\.(\d+)(?:\.(\d+))?", self.dbapi.__version__)  # type: ignore[attr-defined] # noqa: E501
             if m:
@@ -187,13 +190,17 @@ class MySQLDialect_mysqlconnector(MySQLDialect):
             return False
 
     def _compat_fetchall(
-        self, rp: "CursorResult[Unpack[TupleAny]]", charset: str | None = None
+        self,
+        rp: "CursorResult[Unpack[TupleAny]]",
+        charset: Optional[str] = None,
     ) -> "Sequence[Row[tuple[Any, ...]]]":
         return rp.fetchall()
 
     def _compat_fetchone(
-        self, rp: "CursorResult[Unpack[TupleAny]]", charset: str | None = None
-    ) -> "Row[Unpack[tuple[Any, ...]]] | None":
+        self,
+        rp: "CursorResult[Unpack[TupleAny]]",
+        charset: Optional[str] = None,
+    ) -> Optional[Row[Unpack[tuple[Any, ...]]]]:
         return rp.fetchone()
 
     _isolation_lookup = {

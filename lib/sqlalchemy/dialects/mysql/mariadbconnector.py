@@ -28,9 +28,12 @@ be ``mysqldb``. ``mariadb+mariadbconnector://`` is required to use this driver.
 .. mariadb: https://github.com/mariadb-corporation/mariadb-connector-python
 
 """  # noqa
+from __future__ import annotations
+
 import re
 from types import ModuleType
 from typing import Any
+from typing import Optional
 from typing import TYPE_CHECKING
 from uuid import UUID as _python_UUID
 
@@ -63,8 +66,8 @@ class _MariaDBUUID(sqltypes.UUID[sqltypes._UUID_RETURN]):
     # https://jira.mariadb.org/browse/CONPY-270.  When that issue is fixed,
     # this type can be removed.
     def result_processor(
-        self, dialect: "Dialect", coltype: object
-    ) -> "None | _ResultProcessorType[Any]":
+        self, dialect: Dialect, coltype: object
+    ) -> Optional[_ResultProcessorType[Any]]:
         if self.as_uuid:
 
             def process(value: Any) -> Any:

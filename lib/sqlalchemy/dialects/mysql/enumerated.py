@@ -11,6 +11,7 @@ import enum
 from enum import StrEnum
 import re
 from typing import Any
+from typing import Optional
 from typing import TYPE_CHECKING
 from typing import Union
 
@@ -35,7 +36,7 @@ class ENUM(type_api.NativeForEmulated, sqltypes.Enum, _StringType):
 
     native_enum = True
 
-    def __init__(self, *enums: str | StrEnum, **kw: Any):
+    def __init__(self, *enums: Union[str, StrEnum], **kw: Any):
         """Construct an ENUM.
 
         E.g.::
@@ -185,11 +186,11 @@ class SET(_StringType):
             return colexpr
 
     def result_processor(  # type: ignore[override]
-        self, dialect: "Dialect", coltype: object
+        self, dialect: Dialect, coltype: object
     ) -> "_ResultProcessorType[set[str]]":
         if self.retrieve_as_bitwise:
 
-            def process(value: str | int | None) -> set[str] | None:
+            def process(value: Union[str, int, None]) -> Optional[set[str]]:
                 if value is not None:
                     value = int(value)
 
@@ -200,7 +201,7 @@ class SET(_StringType):
         else:
             super_convert = super().result_processor(dialect, coltype)
 
-            def process(value: str | set[str] | None) -> set[str] | None:  # type: ignore[misc]  # NOQA: E501
+            def process(value: Union[str, set[str], None]) -> Optional[set[str]]:  # type: ignore[misc]  # NOQA: E501
                 if isinstance(value, str):
                     # MySQLdb returns a string, let's parse
                     if super_convert:
@@ -217,14 +218,14 @@ class SET(_StringType):
         return process
 
     def bind_processor(
-        self, dialect: "Dialect"
-    ) -> "_BindProcessorType[str|int]":
+        self, dialect: Dialect
+    ) -> _BindProcessorType[Union[str, int]]:
         super_convert = super().bind_processor(dialect)
         if self.retrieve_as_bitwise:
 
             def process(
-                value: str | int | set[str] | None,
-            ) -> str | int | None:
+                value: Union[str, int, set[str], None],
+            ) -> Union[str, int, None]:
                 if value is None:
                     return None
                 elif isinstance(value, (int, str)):
@@ -241,8 +242,8 @@ class SET(_StringType):
         else:
 
             def process(
-                value: str | int | set[str] | None,
-            ) -> str | int | None:
+                value: Union[str, int, set[str], None],
+            ) -> Union[str, int, None]:
                 # accept strings and int (actually bitflag) values directly
                 if value is not None and not isinstance(value, (int, str)):
                     value = ",".join(value)

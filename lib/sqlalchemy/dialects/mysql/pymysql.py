@@ -48,10 +48,12 @@ and targets 100% compatibility.   Most behavioral notes for MySQL-python apply
 to the pymysql driver as well.
 
 """  # noqa
+from __future__ import annotations
 
 from types import ModuleType
 from typing import Any
 from typing import Literal
+from typing import Optional
 from typing import TYPE_CHECKING
 
 from .mysqldb import MySQLDialect_mysqldb
@@ -121,7 +123,7 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
         return True
 
     def create_connect_args(
-        self, url: "URL", _translate_args: dict[str, Any] | None = None
+        self, url: URL, _translate_args: Optional[dict[str, Any]] = None
     ) -> "ConnectArgsType":
         if _translate_args is None:
             _translate_args = dict(username="user")

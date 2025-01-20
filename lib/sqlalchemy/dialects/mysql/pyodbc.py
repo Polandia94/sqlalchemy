@@ -44,11 +44,13 @@ Pass through exact pyodbc connection string::
     connection_uri = "mysql+pyodbc:///?odbc_connect=%s" % params
 
 """  # noqa
+from __future__ import annotations
 
 import datetime
 import re
 from typing import Any
 from typing import Callable
+from typing import Optional
 from typing import TYPE_CHECKING
 
 from .base import MySQLDialect
@@ -69,7 +71,7 @@ if TYPE_CHECKING:
 
 class _pyodbcTIME(TIME):
     def result_processor(
-        self, dialect: "Dialect", coltype: object
+        self, dialect: Dialect, coltype: object
     ) -> "_ResultProcessorType[datetime.time]":
         def process(value: Any) -> "datetime.time | None":
             # pyodbc returns a datetime.time object; no need to convert
@@ -125,11 +127,11 @@ class MySQLDialect_pyodbc(PyODBCConnector, MySQLDialect):
     ) -> tuple[int, ...]:
         return MySQLDialect._get_server_version_info(self, connection)
 
-    def _extract_error_code(self, exception: BaseException) -> None | int:
+    def _extract_error_code(self, exception: BaseException) -> Optional[int]:
         m = re.compile(r"\((\d+)\)").search(str(exception.args))
         if m is None:
             return None
-        c: str | None = m.group(1)
+        c: Optional[str] = m.group(1)
         if c:
             return int(c)
         else:

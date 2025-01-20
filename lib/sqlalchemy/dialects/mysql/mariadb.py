@@ -4,8 +4,11 @@
 #
 # This module is part of SQLAlchemy and is released under
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
+from __future__ import annotations
+
 from typing import Any
 from typing import Callable
+from typing import Optional
 from typing import TYPE_CHECKING
 
 from .base import MariaDBIdentifierPreparer
@@ -60,7 +63,7 @@ class _MariaDBUUID(UUID[_UUID_RETURN]):
         # off native_uuid for internal data handling
         return True
 
-    def bind_processor(self, dialect: "MariaDBDialect") -> "_BindProcessorType[_UUID_RETURN] | None":  # type: ignore[override] # noqa: E501
+    def bind_processor(self, dialect: "MariaDBDialect") -> Optional[_BindProcessorType[_UUID_RETURN]]:  # type: ignore[override] # noqa: E501
         if not dialect.supports_native_uuid or not dialect._allows_uuid_binds:
             return super().bind_processor(dialect)  # type: ignore[return-value] # noqa: E501
         else:

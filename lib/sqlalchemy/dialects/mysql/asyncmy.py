@@ -33,9 +33,11 @@ from types import ModuleType
 from typing import Any
 from typing import Iterable
 from typing import NoReturn
+from typing import Optional
 from typing import SupportsBytes
 from typing import SupportsIndex
 from typing import TYPE_CHECKING
+from typing import Union
 
 from .pymysql import MySQLDialect_pymysql
 from ... import util
@@ -65,8 +67,8 @@ class AsyncAdapt_asyncmy_ss_cursor(
     __slots__ = ()
 
     def _make_new_cursor(
-        self, connection: "AsyncIODBAPIConnection"
-    ) -> "AsyncIODBAPICursor":
+        self, connection: AsyncIODBAPIConnection
+    ) -> AsyncIODBAPICursor:
         return connection.cursor(
             self._adapt_connection.dbapi.asyncmy.cursors.SSCursor
         )
@@ -98,7 +100,7 @@ class AsyncAdapt_asyncmy_connection(AsyncAdapt_dbapi_connection):
         except Exception as error:
             self._handle_exception(error)
 
-    def character_set_name(self) -> str | None:
+    def character_set_name(self) -> Optional[str]:
         return self._connection.character_set_name()  # type: ignore[no-any-return]  # noqa: E501
 
     def autocommit(self, value: Any) -> None:
@@ -113,12 +115,12 @@ class AsyncAdapt_asyncmy_connection(AsyncAdapt_dbapi_connection):
 
 
 def _Binary(
-    x: (
-        Iterable[SupportsIndex]
-        | SupportsIndex
-        | SupportsBytes
-        | "ReadableBuffer"
-    ),
+    x: Union[
+        Iterable[SupportsIndex],
+        SupportsIndex,
+        SupportsBytes,
+        ReadableBuffer,
+    ],
 ) -> bytes:
     """Return x as a binary type."""
     return bytes(x)
@@ -176,12 +178,12 @@ class MySQLDialect_asyncmy(MySQLDialect_pymysql):
     def import_dbapi(cls) -> AsyncAdapt_asyncmy_dbapi:  # type: ignore[override]  # noqa: E501
         return AsyncAdapt_asyncmy_dbapi(__import__("asyncmy"))
 
-    def do_terminate(self, dbapi_connection: "AsyncmyPool") -> None:
+    def do_terminate(self, dbapi_connection: AsyncmyPool) -> None:
         dbapi_connection.terminate()
 
     # _translate_args should not be defined here, is only for super class.
     def create_connect_args(
-        self, url: "URL", _translate_args: Any = None
+        self, url: URL, _translate_args: Any = None
     ) -> "ConnectArgsType":
         return super().create_connect_args(
             url, _translate_args=dict(username="user", database="db")

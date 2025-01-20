@@ -4,6 +4,7 @@
 #
 # This module is part of SQLAlchemy and is released under
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
+from __future__ import annotations
 
 from typing import Any
 from typing import TYPE_CHECKING
@@ -44,11 +45,11 @@ class _FormatTypeMixin:
     def _format_value(self, value: Any) -> str:
         raise NotImplementedError()
 
-    def bind_processor(self, dialect: "Dialect") -> "_BindProcessorType[Any]":
+    def bind_processor(self, dialect: Dialect) -> "_BindProcessorType[Any]":
         raise NotImplementedError()
 
     def literal_processor(
-        self, dialect: "Dialect"
+        self, dialect: Dialect
     ) -> "_LiteralProcessorType[Any]":
         raise NotImplementedError()
 

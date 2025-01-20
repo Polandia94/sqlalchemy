@@ -4,15 +4,17 @@
 #
 # This module is part of SQLAlchemy and is released under
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
-
+from __future__ import annotations
 
 import re
 from typing import Any
 from typing import Callable
 from typing import Literal
+from typing import Optional
 from typing import overload
 from typing import Sequence
 from typing import TYPE_CHECKING
+from typing import Union
 
 from .enumerated import ENUM
 from .enumerated import SET
@@ -35,7 +37,7 @@ class ReflectedState:
     def __init__(self) -> None:
         self.columns: list[ReflectedColumn] = []
         self.table_options: dict[str, str] = {}
-        self.table_name: str | None = None
+        self.table_name: Optional[str] = None
         self.keys: list[dict[str, Any]] = []
         self.fk_constraints: list[dict[str, Any]] = []
         self.ck_constraints: list[dict[str, Any]] = []
@@ -52,7 +54,9 @@ class MySQLTableDefinitionParser(log.Identified):
         self.preparer = preparer
         self._prep_regexes()
 
-    def parse(self, show_create: str, charset: str | None) -> ReflectedState:
+    def parse(
+        self, show_create: str, charset: Optional[str]
+    ) -> ReflectedState:
         state = ReflectedState()
         state.charset = charset  # type: ignore[attr-defined]
         for line in re.split(r"\r?\n", show_create):
@@ -89,15 +93,13 @@ class MySQLTableDefinitionParser(log.Identified):
     def _check_view(self, sql: str) -> bool:
         return bool(self._re_is_view.match(sql))
 
-    def _parse_constraints(
-        self, line: str
-    ) -> (
-        tuple[None, str]
-        | tuple[Literal["partition"], str]
-        | tuple[
+    def _parse_constraints(self, line: str) -> Union[
+        tuple[None, str],
+        tuple[Literal["partition"], str],
+        tuple[
             Literal["ck_constraint", "fk_constraint", "key"], dict[str, str]
-        ]
-    ):
+        ],
+    ]:
         """Parse a KEY or CONSTRAINT line.
 
         :param line: A line of SHOW CREATE TABLE output
@@ -407,7 +409,7 @@ class MySQLTableDefinitionParser(log.Identified):
 
     def _parse_keyexprs(
         self, identifiers: str
-    ) -> list[tuple[Any, int | None, Any]]:
+    ) -> list[tuple[Any, Optional[int], Any]]:
         """Unpack '"col"(2),"col" ASC'-ish strings into components."""
 
         return [
@@ -421,7 +423,7 @@ class MySQLTableDefinitionParser(log.Identified):
         """Pre-compile regular expressions."""
 
         self._pr_options: list[
-            tuple[re.Pattern[Any], Callable[[str], str] | None]
+            tuple[re.Pattern[Any], Optional[Callable[[str], str]]]
         ] = []
 
         _final = self.preparer.final_quote
@@ -671,8 +673,8 @@ def _pr_compile(
 
 
 def _pr_compile(
-    regex: str, cleanup: Callable[[str], str] | None = None
-) -> tuple[re.Pattern[Any], Callable[[str], str] | None]:
+    regex: str, cleanup: Optional[Callable[[str], str]] = None
+) -> tuple[re.Pattern[Any], Optional[Callable[[str], str]]]:
     """Prepare a 2-tuple of compiled regex and callable."""
 
     return (_re_compile(regex), cleanup)

@@ -29,9 +29,11 @@ This dialect should normally be used only with the
     )
 
 """  # noqa
+from __future__ import annotations
 
 from types import ModuleType
 from typing import Any
+from typing import Optional
 from typing import TYPE_CHECKING
 
 from .pymysql import MySQLDialect_pymysql
@@ -67,7 +69,7 @@ class AsyncAdapt_aiomysql_ss_cursor(
     __slots__ = ()
 
     def _make_new_cursor(
-        self, connection: "AsyncIODBAPIConnection"
+        self, connection: AsyncIODBAPIConnection
     ) -> AsyncIODBAPICursor:
         return connection.cursor(
             self._adapt_connection.dbapi.aiomysql.cursors.SSCursor
@@ -79,13 +81,13 @@ class AsyncAdapt_aiomysql_connection(AsyncAdapt_dbapi_connection):
 
     _cursor_cls = AsyncAdapt_aiomysql_cursor
     _ss_cursor_cls = AsyncAdapt_aiomysql_ss_cursor
-    _connection: "AiomysqlConnection"
+    _connection: AiomysqlConnection
 
     def ping(self, reconnect: bool) -> None:
         assert not reconnect
         return await_(self._connection.ping(reconnect))  # type: ignore[no-any-return]  # noqa: E501
 
-    def character_set_name(self) -> str | None:
+    def character_set_name(self) -> Optional[str]:
         return self._connection.character_set_name()  # type: ignore[no-any-return]  # noqa: E501
 
     def autocommit(self, value: Any) -> None:
@@ -172,12 +174,12 @@ class MySQLDialect_aiomysql(MySQLDialect_pymysql):
             __import__("aiomysql"), __import__("pymysql")
         )
 
-    def do_terminate(self, dbapi_connection: "AiomysqlPool") -> None:
+    def do_terminate(self, dbapi_connection: AiomysqlPool) -> None:
         dbapi_connection.terminate()
 
     # _translate_args should not be defined here, is only for super class.
     def create_connect_args(
-        self, url: "URL", _translate_args: Any = None
+        self, url: URL, _translate_args: Any = None
     ) -> "ConnectArgsType":
         return super().create_connect_args(
             url, _translate_args=dict(username="user", database="db")
@@ -199,7 +201,7 @@ class MySQLDialect_aiomysql(MySQLDialect_pymysql):
 
     def get_driver_connection(  # type: ignore[override]
         self, connection: AsyncAdapt_aiomysql_connection
-    ) -> "AiomysqlConnection":
+    ) -> AiomysqlConnection:
         return connection._connection
 
 

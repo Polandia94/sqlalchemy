@@ -21,10 +21,12 @@ r"""
     dialects are mysqlclient and PyMySQL.
 
 """  # noqa
+from __future__ import annotations
 
 from types import ModuleType
 from typing import Any
 from typing import Iterable
+from typing import Optional
 from typing import TYPE_CHECKING
 
 from .base import MySQLDialect
@@ -42,11 +44,11 @@ if TYPE_CHECKING:
 
 class _cymysqlBIT(BIT):
     def result_processor(
-        self, dialect: "Dialect", coltype: object
-    ) -> "None | _ResultProcessorType[Any]":
+        self, dialect: Dialect, coltype: object
+    ) -> Optional[_ResultProcessorType[Any]]:
         """Convert MySQL's 64 bit, variable length binary string to a long."""
 
-        def process(value: None | Iterable[int]) -> None | int:
+        def process(value: Optional[Iterable[int]]) -> Optional[int]:
             if value is not None:
                 v = 0
                 for i in iter(value):

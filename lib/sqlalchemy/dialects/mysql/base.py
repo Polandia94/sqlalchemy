@@ -1047,8 +1047,10 @@ from typing import Any
 from typing import Callable
 from typing import cast
 from typing import NoReturn
+from typing import Optional
 from typing import overload
 from typing import TYPE_CHECKING
+from typing import Union
 
 from . import reflection as _reflection
 from .enumerated import ENUM
@@ -1160,10 +1162,10 @@ if TYPE_CHECKING:
     from ...util.typing import TypeVarTuple
     from ...util.typing import Unpack
 
-    cols_type = (
-        Sequence[elements.KeyedColumnElement[Any]]
-        | ReadOnlyColumnCollection[str, elements.KeyedColumnElement[Any]]
-    )
+    cols_type = Union[
+        Sequence[elements.KeyedColumnElement[Any]],
+        ReadOnlyColumnCollection[str, elements.KeyedColumnElement[Any]],
+    ]
 
 
 SET_RE = re.compile(
@@ -1336,7 +1338,7 @@ class MySQLCompiler(compiler.SQLCompiler):
         return f"{clause} WITH ROLLUP"
 
     def visit_aggregate_strings_func(
-        self, fn: "aggregate_strings", **kw: Any
+        self, fn: aggregate_strings, **kw: Any
     ) -> str:
         expr, delimeter = (
             elem._compiler_dispatch(self, **kw) for elem in fn.clauses
@@ -1476,8 +1478,8 @@ class MySQLCompiler(compiler.SQLCompiler):
             else:
 
                 def replace(
-                    element: "ExternallyTraversible", **kw: Any
-                ) -> "ExternallyTraversible | None":
+                    element: ExternallyTraversible, **kw: Any
+                ) -> Optional[ExternallyTraversible]:
                     if (
                         isinstance(element, elements.BindParameter)
                         and element.type._isnull
@@ -1605,16 +1607,16 @@ class MySQLCompiler(compiler.SQLCompiler):
         return "MATCH (%s) AGAINST (%s)" % (match_clause, against_clause)
 
     def get_from_hint_text(
-        self, table: selectable.FromClause, text: str | None
-    ) -> str | None:
+        self, table: selectable.FromClause, text: Optional[str]
+    ) -> Optional[str]:
         return text
 
     def visit_typeclause(
         self,
         typeclause: elements.TypeClause,
-        type_: TypeEngine[Any] | None = None,
+        type_: Optional[TypeEngine[Any]] = None,
         **kw: Any,
-    ) -> str | None:
+    ) -> Optional[str]:
         if type_ is None:
             type_ = typeclause.type.dialect_impl(self.dialect)
         if isinstance(type_, sqltypes.TypeDecorator):
@@ -1672,7 +1674,7 @@ class MySQLCompiler(compiler.SQLCompiler):
         return "CAST(%s AS %s)" % (self.process(cast.clause, **kw), type_)
 
     def render_literal_value(
-        self, value: str | None, type_: sqltypes.String
+        self, value: Optional[str], type_: sqltypes.String
     ) -> str:
         value = super().render_literal_value(value, type_)
         if self.dialect._backslash_escapes:
@@ -1713,7 +1715,7 @@ class MySQLCompiler(compiler.SQLCompiler):
         self,
         join: "selectable.Join",
         asfrom: bool = False,
-        from_linter: compiler.FromLinter | None = None,
+        from_linter: Optional[compiler.FromLinter] = None,
         **kwargs: Any,
     ) -> str:
         if from_linter:
@@ -1809,14 +1811,14 @@ class MySQLCompiler(compiler.SQLCompiler):
             # No offset provided, so just use the limit
             return " \n LIMIT %s" % (self.process(limit_clause, **kw),)
 
-    def update_limit_clause(self, update_stmt: "Update") -> str | None:
+    def update_limit_clause(self, update_stmt: "Update") -> Optional[str]:
         limit = update_stmt.kwargs.get("%s_limit" % self.dialect.name, None)
         if limit is not None:
             return f"LIMIT {int(limit)}"
         else:
             return None
 
-    def delete_limit_clause(self, delete_stmt: "Delete") -> str | None:
+    def delete_limit_clause(self, delete_stmt: "Delete") -> Optional[str]:
         limit = delete_stmt.kwargs.get("%s_limit" % self.dialect.name, None)
         if limit is not None:
             return f"LIMIT {int(limit)}"
@@ -2627,7 +2629,7 @@ class MySQLIdentifierPreparer(compiler.IdentifierPreparer):
 
         super().__init__(dialect, initial_quote=quote, escape_quote=quote)
 
-    def _quote_free_identifiers(self, *ids: str | None) -> tuple[str, ...]:
+    def _quote_free_identifiers(self, *ids: Optional[str]) -> tuple[str, ...]:
         """Unilaterally identifier-quote any number of strings."""
 
         return tuple([self.quote_identifier(i) for i in ids if i is not None])
@@ -2732,9 +2734,9 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     def __init__(
         self,
-        json_serializer: Callable[..., Any] | None = None,
-        json_deserializer: Callable[..., Any] | None = None,
-        is_mariadb: bool | None = None,
+        json_serializer: Optional[Callable[..., Any]] = None,
+        json_deserializer: Optional[Callable[..., Any]] = None,
+        is_mariadb: Optional[bool] = None,
         **kwargs: Any,
     ) -> None:
         kwargs.pop("use_ansiquotes", None)  # legacy
@@ -2856,7 +2858,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         return server_version_info
 
     def _set_mariadb(
-        self, is_mariadb: bool | None, server_version_info: tuple[int, ...]
+        self, is_mariadb: Optional[bool], server_version_info: tuple[int, ...]
     ) -> None:
         if is_mariadb is None:
             return
@@ -2942,16 +2944,16 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
             return False
 
     def _compat_fetchall(
-        self, rp: CursorResult[Unpack[TupleAny]], charset: str | None = None
-    ) -> Sequence[Row[Unpack[tuple[Any, ...]]]] | Sequence[_DecodingRow]:
+        self, rp: CursorResult[Unpack[TupleAny]], charset: Optional[str] = None
+    ) -> Union[Sequence[Row[Unpack[tuple[Any, ...]]]], Sequence[_DecodingRow]]:
         """Proxy result rows to smooth over MySQL-Python driver
         inconsistencies."""
 
         return [_DecodingRow(row, charset) for row in rp.fetchall()]
 
     def _compat_fetchone(
-        self, rp: CursorResult[Unpack[TupleAny]], charset: str | None = None
-    ) -> Row[tuple[Any, ...]] | None | _DecodingRow:
+        self, rp: CursorResult[Unpack[TupleAny]], charset: Optional[str] = None
+    ) -> Union[Row[tuple[Any, ...]], None, _DecodingRow]:
         """Proxy a result row to smooth over MySQL-Python driver
         inconsistencies."""
 
@@ -2962,8 +2964,8 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
             return None
 
     def _compat_first(
-        self, rp: CursorResult[Unpack[TupleAny]], charset: str | None = None
-    ) -> _DecodingRow | None:
+        self, rp: CursorResult[Unpack[TupleAny]], charset: Optional[str] = None
+    ) -> Optional[_DecodingRow]:
         """Proxy a result row to smooth over MySQL-Python driver
         inconsistencies."""
 
@@ -2973,7 +2975,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         else:
             return None
 
-    def _extract_error_code(self, exception: BaseException) -> int | None:
+    def _extract_error_code(self, exception: BaseException) -> Optional[int]:
         raise NotImplementedError()
 
     def _get_default_schema_name(self, connection: Connection) -> str:
@@ -2984,7 +2986,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self,
         connection: Connection,
         table_name: str,
-        schema: str | None = None,
+        schema: Optional[str] = None,
         **kw: Any,
     ) -> bool:
         self._ensure_has_table_connection(connection)
@@ -3036,7 +3038,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self,
         connection: Connection,
         sequence_name: str,
-        schema: str | None = None,
+        schema: Optional[str] = None,
         **kw: Any,
     ) -> bool:
         if not self.supports_sequences:
@@ -3066,7 +3068,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     @reflection.cache
     def get_sequence_names(
-        self, connection: Connection, schema: str | None = None, **kw: Any
+        self, connection: Connection, schema: Optional[str] = None, **kw: Any
     ) -> list[str]:
         if not self.supports_sequences:
             self._sequences_not_supported()
@@ -3090,7 +3092,9 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
     def initialize(self, connection: Connection) -> None:
         # this is driver-based, does not need server version info
         # and is fairly critical for even basic SQL operations
-        self._connection_charset: str | None = self._detect_charset(connection)
+        self._connection_charset: Optional[str] = self._detect_charset(
+            connection
+        )
 
         # call super().initialize() because we need to have
         # server_version_info set up.  in 1.4 under python 2 only this does the
@@ -3197,7 +3201,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     @reflection.cache
     def get_table_names(
-        self, connection: Connection, schema: str | None = None, **kw: Any
+        self, connection: Connection, schema: Optional[str] = None, **kw: Any
     ) -> list[str]:
         """Return a Unicode SHOW TABLES from a given schema."""
         if schema is not None:
@@ -3220,7 +3224,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     @reflection.cache
     def get_view_names(
-        self, connection: Connection, schema: str | None = None, **kw: Any
+        self, connection: Connection, schema: Optional[str] = None, **kw: Any
     ) -> list[str]:
         if schema is None:
             schema = self.default_schema_name
@@ -3241,7 +3245,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self,
         connection: Connection,
         table_name: str,
-        schema: str | None = None,
+        schema: Optional[str] = None,
         **kw: Any,
     ) -> dict[str, Any]:
         parsed_state = self._parsed_state_or_create(
@@ -3257,7 +3261,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self,
         connection: Connection,
         table_name: str,
-        schema: str | None = None,
+        schema: Optional[str] = None,
         **kw: Any,
     ) -> list["ReflectedColumn"]:
         parsed_state = self._parsed_state_or_create(
@@ -3273,7 +3277,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self,
         connection: Connection,
         table_name: str,
-        schema: str | None = None,
+        schema: Optional[str] = None,
         **kw: Any,
     ) -> "ReflectedPrimaryKeyConstraint":
         parsed_state = self._parsed_state_or_create(
@@ -3291,7 +3295,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self,
         connection: Connection,
         table_name: str,
-        schema: str | None = None,
+        schema: Optional[str] = None,
         **kw: Any,
     ) -> list["ReflectedForeignKeyConstraint"]:
         parsed_state = self._parsed_state_or_create(
@@ -3447,7 +3451,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self,
         connection: Connection,
         table_name: str,
-        schema: str | None = None,
+        schema: Optional[str] = None,
         **kw: Any,
     ) -> list["ReflectedCheckConstraint"]:
         parsed_state = self._parsed_state_or_create(
@@ -3466,7 +3470,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self,
         connection: Connection,
         table_name: str,
-        schema: str | None = None,
+        schema: Optional[str] = None,
         **kw: Any,
     ) -> "ReflectedTableComment":
         parsed_state = self._parsed_state_or_create(
@@ -3483,7 +3487,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self,
         connection: Connection,
         table_name: str,
-        schema: str | None = None,
+        schema: Optional[str] = None,
         **kw: Any,
     ) -> list["ReflectedIndex"]:
         parsed_state = self._parsed_state_or_create(
@@ -3542,7 +3546,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self,
         connection: Connection,
         table_name: str,
-        schema: str | None = None,
+        schema: Optional[str] = None,
         **kw: Any,
     ) -> list["ReflectedUniqueConstraint"]:
         parsed_state = self._parsed_state_or_create(
@@ -3569,7 +3573,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self,
         connection: Connection,
         view_name: str,
-        schema: str | None = None,
+        schema: Optional[str] = None,
         **kw: Any,
     ) -> str:
         charset = self._connection_charset
@@ -3588,7 +3592,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self,
         connection: Connection,
         table_name: str,
-        schema: str | None = None,
+        schema: Optional[str] = None,
         **kw: Any,
     ) -> "_reflection.ReflectedState":
         return self._setup_parser(
@@ -3614,7 +3618,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self,
         connection: Connection,
         table_name: str,
-        schema: str | None = None,
+        schema: Optional[str] = None,
         **kw: Any,
     ) -> "_reflection.ReflectedState":
         charset = self._connection_charset
@@ -3639,7 +3643,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
 
     def _fetch_setting(
         self, connection: Connection, setting_name: str
-    ) -> str | None:
+    ) -> Optional[str]:
         charset = self._connection_charset
 
         if self.server_version_info and self.server_version_info < (5, 6):
@@ -3656,10 +3660,10 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         else:
             return row[fetch_col]
 
-    def _detect_charset(self, connection: "Connection") -> str:
+    def _detect_charset(self, connection: Connection) -> str:
         raise NotImplementedError()
 
-    def _detect_casing(self, connection: "Connection") -> int:
+    def _detect_casing(self, connection: Connection) -> int:
         """Sniff out identifier case sensitivity.
 
         Cached per-connection. This value can not change without a server
@@ -3726,27 +3730,27 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
     @overload
     def _show_create_table(
         self,
-        connection: "Connection",
-        table: "Table | None",
-        charset: str | None,
+        connection: Connection,
+        table: Optional[Table],
+        charset: Optional[str],
         full_name: str,
     ) -> str: ...
 
     @overload
     def _show_create_table(
         self,
-        connection: "Connection",
-        table: "Table",
-        charset: str | None = None,
+        connection: Connection,
+        table: Table,
+        charset: Optional[str] = None,
         full_name: None = None,
     ) -> str: ...
 
     def _show_create_table(
         self,
-        connection: "Connection",
-        table: "Table | None",
-        charset: str | None = None,
-        full_name: str | None = None,
+        connection: Connection,
+        table: Optional[Table],
+        charset: Optional[str] = None,
+        full_name: Optional[str] = None,
     ) -> str:
         """Run SHOW CREATE TABLE for a ``Table``."""
 
@@ -3774,27 +3778,31 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
     def _describe_table(
         self,
         connection: Connection,
-        table: Table | None,
-        charset: str | None,
+        table: Optional[Table],
+        charset: Optional[str],
         full_name: str,
-    ) -> Sequence[Row[Unpack[tuple[Any, ...]]]] | Sequence[_DecodingRow]: ...
+    ) -> Union[
+        Sequence[Row[Unpack[tuple[Any, ...]]]], Sequence[_DecodingRow]
+    ]: ...
 
     @overload
     def _describe_table(
         self,
         connection: Connection,
         table: Table,
-        charset: str | None = None,
+        charset: Optional[str] = None,
         full_name: None = None,
-    ) -> Sequence[Row[Unpack[tuple[Any, ...]]]] | Sequence[_DecodingRow]: ...
+    ) -> Union[
+        Sequence[Row[Unpack[tuple[Any, ...]]]], Sequence[_DecodingRow]
+    ]: ...
 
     def _describe_table(
         self,
         connection: Connection,
-        table: Table | None,
-        charset: str | None = None,
-        full_name: str | None = None,
-    ) -> Sequence[Row[Unpack[tuple[Any, ...]]]] | Sequence[_DecodingRow]:
+        table: Optional[Table],
+        charset: Optional[str] = None,
+        full_name: Optional[str] = None,
+    ) -> Union[Sequence[Row[Unpack[tuple[Any, ...]]]], Sequence[_DecodingRow]]:
         """Run DESCRIBE for a ``Table`` and return processed rows."""
 
         if full_name is None:
@@ -3841,7 +3849,7 @@ class _DecodingRow:
     # sets.Set(['value']) (seriously) but thankfully that doesn't
     # seem to come up in DDL queries.
 
-    _encoding_compat: dict[str | None, str] = {
+    _encoding_compat: dict[Optional[str], str] = {
         "koi8r": "koi8_r",
         "koi8u": "koi8_u",
         "utf16": "utf-16-be",  # MySQL's uft16 is always bigendian
@@ -3851,7 +3859,7 @@ class _DecodingRow:
         "eucjpms": "ujis",
     }
 
-    def __init__(self, rowproxy: Row[Unpack[_Ts]], charset: str | None):
+    def __init__(self, rowproxy: Row[Unpack[_Ts]], charset: Optional[str]):
         self.rowproxy = rowproxy
         self.charset = self._encoding_compat.get(charset, charset)
 

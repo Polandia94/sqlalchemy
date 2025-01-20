@@ -85,6 +85,7 @@ Server Side Cursors
 The mysqldb dialect supports server-side cursors. See :ref:`mysql_ss_cursors`.
 
 """
+from __future__ import annotations
 
 import re
 from types import ModuleType
@@ -92,6 +93,7 @@ from typing import Any
 from typing import Callable
 from typing import Iterable
 from typing import Literal
+from typing import Optional
 from typing import TYPE_CHECKING
 
 from .base import MySQLCompiler
@@ -187,14 +189,14 @@ class MySQLDialect_mysqldb(MySQLDialect):
         cursor: "MySQLdb.cursors.Cursor",  # type: ignore[override]
         statement: LiteralString,
         parameters: Iterable[Any],
-        context: MySQLExecutionContext_mysqldb | None = None,  # type: ignore
+        context: Optional[MySQLExecutionContext_mysqldb] = None,  # type: ignore # NOQA: E501
     ) -> None:
         rowcount = cursor.executemany(statement, parameters)
         if context is not None:
             context._rowcount = rowcount
 
     def create_connect_args(
-        self, url: "URL", _translate_args: dict[str, Any] | None = None
+        self, url: URL, _translate_args: Optional[dict[str, Any]] = None
     ) -> "ConnectArgsType":
         if _translate_args is None:
             _translate_args = dict(
@@ -246,7 +248,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
             opts["client_flag"] = client_flag
         return [], opts
 
-    def _found_rows_client_flag(self) -> int | None:
+    def _found_rows_client_flag(self) -> Optional[int]:
         if self.dbapi is not None:
             try:
                 CLIENT_FLAGS: "MySQLdb.constants.CLIENT" = __import__(  # type: ignore[valid-type] # NOQA: E501
