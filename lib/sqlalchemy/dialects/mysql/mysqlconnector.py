@@ -106,7 +106,9 @@ class IdentifierPreparerCommon_mysqlconnector:
         pass
 
     def _escape_identifier(self, value: str) -> str:
-        value = value.replace(self.escape_quote, self.escape_to_quote)  # type:ignore[attr-defined]  # noqa:E501
+        value = value.replace(
+            self.escape_quote, self.escape_to_quote  # type:ignore[attr-defined]
+        )
         return value
 
 

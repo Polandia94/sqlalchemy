@@ -1529,6 +1529,7 @@ class MySQLCompiler(compiler.SQLCompiler):
                     return None
 
                 # val: visitors.ExternallyTraversible
+
             val = visitors.replacement_traverse(val, {}, replace)
             value_text = self.process(val.self_group(), use_schema=False)
 

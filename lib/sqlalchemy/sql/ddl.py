@@ -32,6 +32,7 @@ from .base import _generative
 from .base import Executable
 from .base import SchemaVisitor
 from .elements import ClauseElement
+from .schema import Column
 from .. import exc
 from .. import util
 from ..util import topological
@@ -41,7 +42,6 @@ if typing.TYPE_CHECKING:
     from .compiler import Compiled
     from .compiler import DDLCompiler
     from .elements import BindParameter
-    from .schema import Column
     from .schema import Constraint
     from .schema import ForeignKeyConstraint
     from .schema import Index
