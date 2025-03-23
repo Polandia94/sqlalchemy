@@ -173,8 +173,8 @@ class SET(_StringType):
         super().__init__(**kw)
 
     def column_expression(
-        self, colexpr: "ColumnElement[Any]"
-    ) -> "ColumnElement[Any]":
+        self, colexpr: ColumnElement[Any]
+    ) -> ColumnElement[Any]:
         if self.retrieve_as_bitwise:
             return sql.type_coerce(
                 sql.type_coerce(colexpr, sqltypes.Integer) + 0, self
@@ -184,7 +184,7 @@ class SET(_StringType):
 
     def result_processor(  # type: ignore[override]
         self, dialect: Dialect, coltype: object
-    ) -> "_ResultProcessorType[set[str]]":
+    ) -> _ResultProcessorType[set[str]]:
         if self.retrieve_as_bitwise:
 
             def process(value: Union[str, int, None]) -> Optional[set[str]]:
@@ -198,7 +198,7 @@ class SET(_StringType):
         else:
             super_convert = super().result_processor(dialect, coltype)
 
-            def process(value: Union[str, set[str], None]) -> Optional[set[str]]:  # type: ignore[misc]  # NOQA: E501
+            def process(value: Union[str, set[str], None]) -> Optional[set[str]]:  # type: ignore[misc]  # noqa: E501
                 if isinstance(value, str):
                     # MySQLdb returns a string, let's parse
                     if super_convert:
@@ -227,7 +227,7 @@ class SET(_StringType):
                     return None
                 elif isinstance(value, (int, str)):
                     if super_convert:
-                        return super_convert(value)  # type: ignore
+                        return super_convert(value)  # type: ignore[arg-type, no-any-return]  # noqa: E501
                     else:
                         return value
                 else:
