@@ -58,7 +58,7 @@ class AsyncAdapt_aiomysql_cursor(AsyncAdapt_dbapi_cursor):
     __slots__ = ()
 
     def _make_new_cursor(
-        self, connection: "AsyncIODBAPIConnection"
+        self, connection: AsyncIODBAPIConnection
     ) -> AsyncIODBAPICursor:
         return connection.cursor(self._adapt_connection.dbapi.Cursor)
 

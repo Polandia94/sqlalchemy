@@ -1389,9 +1389,6 @@ class FullyBufferedCursorFetchStrategy(CursorFetchStrategy):
         if initial_buffer is not None:
             self._rowbuffer = collections.deque(initial_buffer)
         else:
-            dbapi_cursor = cast(
-                DBAPICursor, dbapi_cursor
-            )  # Can't be both None
             assert dbapi_cursor is not None
             self._rowbuffer = collections.deque(dbapi_cursor.fetchall())
 
