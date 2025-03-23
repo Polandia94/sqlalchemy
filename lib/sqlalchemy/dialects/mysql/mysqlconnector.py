@@ -64,6 +64,9 @@ if TYPE_CHECKING:
     from ...engine.base import Connection
     from ...engine.cursor import CursorResult
     from ...engine.interfaces import ConnectArgsType
+    from ...engine.interfaces import DBAPIConnection
+    from ...engine.interfaces import DBAPICursor
+    from ...engine.interfaces import IsolationLevel
     from ...engine.row import Row
     from ...engine.url import URL
     from ...sql.elements import BinaryExpression
@@ -75,18 +78,10 @@ if TYPE_CHECKING:
 
 
 class MySQLExecutionContext_mysqlconnector(MySQLExecutionContext):
-    def create_server_side_cursor(self):
+    def create_server_side_cursor(self) -> DBAPICursor:
         return self._dbapi_connection.cursor(buffered=False)
 
-    def create_default_cursor(self):
-        return self._dbapi_connection.cursor(buffered=True)
-
-
-class MySQLExecutionContext_mysqlconnector(MySQLExecutionContext):
-    def create_server_side_cursor(self):
-        return self._dbapi_connection.cursor(buffered=False)
-
-    def create_default_cursor(self):
+    def create_default_cursor(self) -> DBAPICursor:
         return self._dbapi_connection.cursor(buffered=True)
 
 
@@ -111,17 +106,17 @@ class IdentifierPreparerCommon_mysqlconnector:
         pass
 
     def _escape_identifier(self, value: str) -> str:
-        value = value.replace(self.escape_quote, self.escape_to_quote)
+        value = value.replace(self.escape_quote, self.escape_to_quote)  # type:ignore[attr-defined]  # noqa:E501
         return value
 
 
-class MySQLIdentifierPreparer_mysqlconnector(
+class MySQLIdentifierPreparer_mysqlconnector(  # type:ignore[misc]
     IdentifierPreparerCommon_mysqlconnector, MySQLIdentifierPreparer
 ):
     pass
 
 
-class MariaDBIdentifierPreparer_mysqlconnector(
+class MariaDBIdentifierPreparer_mysqlconnector(  # type:ignore[misc]
     IdentifierPreparerCommon_mysqlconnector, MariaDBIdentifierPreparer
 ):
     pass
@@ -240,10 +235,10 @@ class MySQLDialect_mysqlconnector(MySQLDialect):
     ) -> bool:
         errnos = (2006, 2013, 2014, 2045, 2055, 2048)
         exceptions = (
-            self.dbapi.OperationalError,
-            self.dbapi.InterfaceError,
-            self.dbapi.ProgrammingError,
-        )  # type: ignore[attr-defined] # noqa: E501
+            self.dbapi.OperationalError,  # type: ignore[attr-defined]
+            self.dbapi.InterfaceError,  # type: ignore[attr-defined]
+            self.dbapi.ProgrammingError,  # type: ignore[attr-defined]
+        )
         if isinstance(e, exceptions):
             return (
                 e.errno in errnos
@@ -267,7 +262,9 @@ class MySQLDialect_mysqlconnector(MySQLDialect):
     ) -> Optional[Row[Unpack[tuple[Any, ...]]]]:
         return rp.fetchone()
 
-    def get_isolation_level_values(self, dbapi_connection):
+    def get_isolation_level_values(
+        self, dbapi_connection: DBAPIConnection
+    ) -> Sequence["IsolationLevel"]:
         return (
             "SERIALIZABLE",
             "READ UNCOMMITTED",
@@ -276,12 +273,14 @@ class MySQLDialect_mysqlconnector(MySQLDialect):
             "AUTOCOMMIT",
         )
 
-    def set_isolation_level(self, connection, level):
+    def set_isolation_level(
+        self, dbapi_connection: DBAPIConnection, level: IsolationLevel
+    ) -> None:
         if level == "AUTOCOMMIT":
-            connection.autocommit = True
+            dbapi_connection.autocommit = True
         else:
-            connection.autocommit = False
-            super().set_isolation_level(connection, level)
+            dbapi_connection.autocommit = False
+            super().set_isolation_level(dbapi_connection, level)
 
 
 class MariaDBDialect_mysqlconnector(

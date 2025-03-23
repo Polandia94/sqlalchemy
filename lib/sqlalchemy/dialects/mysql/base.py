@@ -1153,6 +1153,7 @@ if TYPE_CHECKING:
 
     from ...dialects.mysql import expression
     from ...dialects.mysql.dml import OnDuplicateClause
+    from ...dialects.mysql.dml import DMLLimitClause
     from ...engine.base import Connection
     from ...engine.cursor import CursorResult
     from ...engine.interfaces import DBAPIConnection
@@ -1696,7 +1697,7 @@ class MySQLCompiler(compiler.SQLCompiler):
         return "CAST(%s AS %s)" % (self.process(cast.clause, **kw), type_)
 
     def render_literal_value(
-        self, value: Optional[str], type_: sqltypes.String
+        self, value: Optional[str], type_: TypeEngine[Any]
     ) -> str:
         value = super().render_literal_value(value, type_)
         if self.dialect._backslash_escapes:
@@ -1833,7 +1834,9 @@ class MySQLCompiler(compiler.SQLCompiler):
             # No offset provided, so just use the limit
             return " \n LIMIT %s" % (self.process(limit_clause, **kw),)
 
-    def update_post_criteria_clause(self, update_stmt: "Update", **kw) -> Optional[str]:
+    def update_post_criteria_clause(
+        self, update_stmt: Update, **kw: Any
+    ) -> Optional[str]:
         limit = update_stmt.kwargs.get("%s_limit" % self.dialect.name, None)
         supertext = super().update_post_criteria_clause(update_stmt, **kw)
 
@@ -1846,7 +1849,9 @@ class MySQLCompiler(compiler.SQLCompiler):
         else:
             return supertext
 
-    def delete_post_criteria_clause(self, delete_stmt: "Delete", **kw) -> Optional[str]:
+    def delete_post_criteria_clause(
+        self, delete_stmt: "Delete", **kw: Any
+    ) -> Optional[str]:
         limit = delete_stmt.kwargs.get("%s_limit" % self.dialect.name, None)
         supertext = super().delete_post_criteria_clause(delete_stmt, **kw)
 
@@ -1859,7 +1864,9 @@ class MySQLCompiler(compiler.SQLCompiler):
         else:
             return supertext
 
-    def visit_mysql_dml_limit_clause(self, element, **kw):
+    def visit_mysql_dml_limit_clause(
+        self, element: DMLLimitClause, **kw: Any
+    ) -> str:
         kw["literal_execute"] = True
         return f"LIMIT {self.process(element._limit_clause, **kw)}"
 
@@ -2599,14 +2606,14 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
     def visit_UUID(self, type_: UUID[sqltypes._UUID_RETURN], **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
         return "UUID"
 
-    def visit_VARBINARY(self, type_: VARBINARY, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
+    def visit_VARBINARY(self, type_: VARBINARY, **kw: Any) -> str:
         type_.length = cast(int, type_.length)
         return "VARBINARY(%d)" % type_.length
 
     def visit_JSON(self, type_: JSON, **kw: Any) -> str:
         return "JSON"
 
-    def visit_large_binary(self, type_: LargeBinary, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
+    def visit_large_binary(self, type_: LargeBinary, **kw: Any) -> str:
         return self.visit_BLOB(type_)
 
     def visit_enum(self, type_: ENUM, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
@@ -2615,7 +2622,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
         else:
             return self._visit_enumerated_values("ENUM", type_, type_.enums)
 
-    def visit_BLOB(self, type_: LargeBinary, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
+    def visit_BLOB(self, type_: LargeBinary, **kw: Any) -> str:
         if type_.length is not None:
             return "BLOB(%d)" % type_.length
         else:
@@ -2648,7 +2655,7 @@ class MySQLTypeCompiler(compiler.GenericTypeCompiler):
     def visit_SET(self, type_: SET, **kw: Any) -> str:
         return self._visit_enumerated_values("SET", type_, type_.values)
 
-    def visit_BOOLEAN(self, type_: sqltypes.Boolean, **kw: Any) -> str:  # type: ignore[override]  # NOQA: E501
+    def visit_BOOLEAN(self, type_: sqltypes.Boolean, **kw: Any) -> str:
         return "BOOL"
 
 

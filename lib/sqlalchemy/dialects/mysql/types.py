@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from ...engine.interfaces import Dialect
     from ...sql.type_api import _BindProcessorType
     from ...sql.type_api import _ResultProcessorType
+    from .base import MySQLDialect
 
 
 class _NumericCommonType:
@@ -436,7 +437,7 @@ class BIT(sqltypes.TypeEngine[Any]):
         self.length = length
 
     def result_processor(
-        self, dialect: Dialect, coltype: object
+        self, dialect: MySQLDialect, coltype: object  # type: ignore[override]
     ) -> Optional[_ResultProcessorType[Any]]:
         """Convert a MySQL's 64 bit, variable length binary string to a
         long."""

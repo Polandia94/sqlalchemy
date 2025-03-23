@@ -28,7 +28,6 @@ from __future__ import annotations
 import collections
 import collections.abc as collections_abc
 import contextlib
-import decimal
 from enum import IntEnum
 import functools
 import itertools
@@ -50,7 +49,6 @@ from typing import MutableMapping
 from typing import NamedTuple
 from typing import NoReturn
 from typing import Optional
-from typing import overload
 from typing import Pattern
 from typing import Protocol
 from typing import Sequence
@@ -96,6 +94,7 @@ if typing.TYPE_CHECKING:
     from .base import CompileState
     from .base import Executable
     from .cache_key import CacheKey
+    from .dml import Delete
     from .ddl import ExecutableDDLElement
     from .dml import Insert
     from .dml import Update
@@ -6180,7 +6179,9 @@ class SQLCompiler(Compiled):
             "criteria within UPDATE"
         )
 
-    def update_post_criteria_clause(self, update_stmt, **kw):
+    def update_post_criteria_clause(
+        self, update_stmt: Update, **kw: Any
+    ) -> Optional[str]:
         """provide a hook to override generation after the WHERE criteria
         in an UPDATE statement
 
@@ -6195,7 +6196,9 @@ class SQLCompiler(Compiled):
         else:
             return None
 
-    def delete_post_criteria_clause(self, delete_stmt, **kw):
+    def delete_post_criteria_clause(
+        self, delete_stmt: Delete, **kw: Any
+    ) -> Optional[str]:
         """provide a hook to override generation after the WHERE criteria
         in a DELETE statement
 
@@ -6310,7 +6313,7 @@ class SQLCompiler(Compiled):
             if self.returning_precedes_values:
                 text += " " + self.returning_clause(
                     update_stmt,
-                    self.implicit_returning or update_stmt._returning,  # type: ignore[arg-type]  # NOQA: E501
+                    self.implicit_returning or update_stmt._returning,
                     populate_result_map=toplevel,
                 )
 
@@ -6344,7 +6347,7 @@ class SQLCompiler(Compiled):
         ) and not self.returning_precedes_values:
             text += " " + self.returning_clause(
                 update_stmt,
-                self.implicit_returning or update_stmt._returning,  # type: ignore[arg-type] # noqa: E501
+                self.implicit_returning or update_stmt._returning,
                 populate_result_map=toplevel,
             )
 
@@ -7745,7 +7748,7 @@ class IdentifierPreparer:
         # to dialect.max_identifier_length etc. can be reflected
         # as IdentifierPreparer is long lived
         max_ = (
-            self.dialect.max_index_name_length  # type: ignore[attr-defined]
+            self.dialect.max_index_name_length
             or self.dialect.max_identifier_length
         )
         return self._truncate_and_render_maxlen_name(
@@ -7759,7 +7762,7 @@ class IdentifierPreparer:
         # to dialect.max_identifier_length etc. can be reflected
         # as IdentifierPreparer is long lived
         max_ = (
-            self.dialect.max_constraint_name_length  # type: ignore[attr-defined]  # NOQA: E501
+            self.dialect.max_constraint_name_length
             or self.dialect.max_identifier_length
         )
         return self._truncate_and_render_maxlen_name(
@@ -7773,7 +7776,7 @@ class IdentifierPreparer:
             if len(name) > max_:
                 name = name[0 : max_ - 8] + "_" + util.md5_hex(name)[-4:]
         else:
-            self.dialect.validate_identifier(name)  # type: ignore[attr-defined]  # NOQA: E501
+            self.dialect.validate_identifier(name)
 
         if not _alembic_quote:
             return name

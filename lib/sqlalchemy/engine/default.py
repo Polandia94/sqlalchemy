@@ -81,7 +81,6 @@ if typing.TYPE_CHECKING:
     from .interfaces import _DBAPICursorDescription
     from .interfaces import _DBAPIMultiExecuteParams
     from .interfaces import _DBAPISingleExecuteParams
-    from .interfaces import _DBAPISingleExecuteParams
     from .interfaces import _ExecuteOptions
     from .interfaces import _MutableCoreSingleExecuteParams
     from .interfaces import _ParamStyle
@@ -105,8 +104,6 @@ if typing.TYPE_CHECKING:
     from ..sql.type_api import _ResultProcessorType
     from ..sql.type_api import TypeEngine
     from ..util.langhelpers import generic_fn_descriptor
-
-
 
 
 # When we're handed literal SQL, ensure it's a SELECT query
@@ -570,7 +567,7 @@ class DefaultDialect(Dialect):
             )
 
     def on_connect(self) -> Optional[Callable[[Any], None]]:
-        # inherits the docstring from interfaces.Dialect.on_connect 
+        # inherits the docstring from interfaces.Dialect.on_connect
         return None
 
     def _check_max_identifier_length(self, connection):

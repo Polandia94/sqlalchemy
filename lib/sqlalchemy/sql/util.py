@@ -21,7 +21,6 @@ from typing import Callable
 from typing import cast
 from typing import Collection
 from typing import Dict
-from typing import Generator
 from typing import Iterable
 from typing import Iterator
 from typing import List

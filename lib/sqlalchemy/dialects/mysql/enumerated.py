@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import enum
-from enum import StrEnum
+from enum import Enum
 import re
 from typing import Any
 from typing import Optional
@@ -36,7 +36,7 @@ class ENUM(type_api.NativeForEmulated, sqltypes.Enum, _StringType):
 
     native_enum = True
 
-    def __init__(self, *enums: Union[str, StrEnum], **kw: Any):
+    def __init__(self, *enums: Union[str, Enum], **kw: Any):
         """Construct an ENUM.
 
         E.g.::
@@ -72,7 +72,7 @@ class ENUM(type_api.NativeForEmulated, sqltypes.Enum, _StringType):
 
         """
         kw.pop("strict", None)
-        self._enum_init(enums, kw)
+        self._enum_init(enums, kw)  # type: ignore[arg-type]
         _StringType.__init__(self, length=self.length, **kw)
 
     @classmethod

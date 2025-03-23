@@ -1533,7 +1533,7 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
         # this is a template enum that will be used to generate
         # new Enum classes.
         if self.enum_class and values:
-            kw.setdefault("name", self.enum_class.__name__.lower())  # type: ignore[union-attr] # noqa: E501
+            kw.setdefault("name", self.enum_class.__name__.lower())
         SchemaType.__init__(
             self,
             name=kw.pop("name", None),
@@ -1564,9 +1564,9 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
                     (n, v) for n, v in _members.items() if v.name == n
                 )
             else:
-                members = _members  # type: ignore[assignment]
+                members = _members
             if self.values_callable:
-                values = self.values_callable(self.enum_class)  # type: ignore[arg-type] # noqa: E501
+                values = self.values_callable(self.enum_class)
             else:
                 values = list(members)
             objects = [members[k] for k in members]

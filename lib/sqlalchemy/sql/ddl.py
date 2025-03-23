@@ -32,7 +32,6 @@ from .base import _generative
 from .base import Executable
 from .base import SchemaVisitor
 from .elements import ClauseElement
-from .schema import Column
 from .. import exc
 from .. import util
 from ..util import topological
@@ -842,13 +841,13 @@ class DropTableComment(_CreateDropBase["Table"]):
     __visit_name__ = "drop_table_comment"
 
 
-class SetColumnComment(_CreateDropBase["Column[Any]"]):
+class SetColumnComment(_CreateDropBase[Column[Any]]):
     """Represent a COMMENT ON COLUMN IS statement."""
 
     __visit_name__ = "set_column_comment"
 
 
-class DropColumnComment(_CreateDropBase["Column[Any]"]):
+class DropColumnComment(_CreateDropBase[Column[Any]]):
     """Represent a COMMENT ON COLUMN IS NULL statement."""
 
     __visit_name__ = "drop_column_comment"

@@ -74,7 +74,7 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
     dbapi: "pymysql"  # type: ignore[valid-type]
 
     @langhelpers.memoized_property
-    def supports_server_side_cursors(self) -> bool:
+    def supports_server_side_cursors(self) -> bool:  # type: ignore[override]
         try:
             cursors = __import__("pymysql.cursors").cursors
             self._sscursor = cursors.SSCursor
