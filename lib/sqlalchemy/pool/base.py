@@ -271,8 +271,6 @@ class Pool(log.Identified, event.EventTarget):
          invalidated.     Requires that a dialect is passed as well to
          interpret the disconnection error.
 
-         .. versionadded:: 1.2
-
         """
         if logging_name:
             self.logging_name = self._orig_logging_name = logging_name
@@ -468,6 +466,7 @@ class Pool(log.Identified, event.EventTarget):
         raise NotImplementedError()
 
     def status(self) -> str:
+        """Returns a brief description of the state of this pool."""
         raise NotImplementedError()
 
 

@@ -100,14 +100,6 @@ is set to ``False`` on any integer primary key column::
    ``dialect_options`` key in :meth:`_reflection.Inspector.get_columns`.
    Use the information in the ``identity`` key instead.
 
-.. deprecated:: 1.3
-
-   The use of :class:`.Sequence` to specify IDENTITY characteristics is
-   deprecated and will be removed in a future release.   Please use
-   the :class:`_schema.Identity` object parameters
-   :paramref:`_schema.Identity.start` and
-   :paramref:`_schema.Identity.increment`.
-
 .. versionchanged::  1.4   Removed the ability to use a :class:`.Sequence`
    object to modify IDENTITY characteristics. :class:`.Sequence` objects
    now only manipulate true T-SQL SEQUENCE types.
@@ -167,13 +159,6 @@ The CREATE TABLE for the above :class:`_schema.Table` object would be:
    The :class:`_schema.Identity` object supports many other parameter in
    addition to ``start`` and ``increment``. These are not supported by
    SQL Server and will be ignored when generating the CREATE TABLE ddl.
-
-.. versionchanged:: 1.3.19  The :class:`_schema.Identity` object is
-   now used to affect the
-   ``IDENTITY`` generator for a :class:`_schema.Column` under  SQL Server.
-   Previously, the :class:`.Sequence` object was used.  As SQL Server now
-   supports real sequences as a separate construct, :class:`.Sequence` will be
-   functional in the normal way starting from SQLAlchemy version 1.4.
 
 
 Using IDENTITY with Non-Integer numeric types
@@ -717,10 +702,6 @@ or embedded dots, use two sets of brackets::
         schema="[MyDataBase.Period].[MyOwner.Dot]",
     )
 
-.. versionchanged:: 1.2 the SQL Server dialect now treats brackets as
-   identifier delimiters splitting the schema into separate database
-   and owner tokens, to allow dots within either name itself.
-
 .. _legacy_schema_rendering:
 
 Legacy Schema Mode
@@ -879,8 +860,6 @@ names::
     Index("my_index", table.c.x, mssql_where=table.c.x > 10)
 
 would render the index as ``CREATE INDEX my_index ON table (x) WHERE x > 10``.
-
-.. versionadded:: 1.3.4
 
 Index ordering
 ^^^^^^^^^^^^^^
@@ -1407,8 +1386,6 @@ class TIMESTAMP(sqltypes._Binary):
     TIMESTAMP type, which is not supported by SQL Server.  It
     is a read-only datatype that does not support INSERT of values.
 
-    .. versionadded:: 1.2
-
     .. seealso::
 
         :class:`_mssql.ROWVERSION`
@@ -1425,8 +1402,6 @@ class TIMESTAMP(sqltypes._Binary):
 
         :param convert_int: if True, binary integer values will
          be converted to integers on read.
-
-        .. versionadded:: 1.2
 
         """
         self.convert_int = convert_int
@@ -1460,8 +1435,6 @@ class ROWVERSION(TIMESTAMP):
     :class:`_mssql.TIMESTAMP`.
 
     This is a read-only datatype that does not support INSERT of values.
-
-    .. versionadded:: 1.2
 
     .. seealso::
 
@@ -1624,7 +1597,7 @@ class UNIQUEIDENTIFIER(sqltypes.Uuid[sqltypes._UUID_RETURN]):
          as Python uuid objects, converting to/from string via the
          DBAPI.
 
-         .. versionchanged: 2.0 Added direct "uuid" support to the
+         .. versionchanged:: 2.0 Added direct "uuid" support to the
             :class:`_mssql.UNIQUEIDENTIFIER` datatype; uuid interpretation
             defaults to ``True``.
 
@@ -2851,22 +2824,8 @@ class MSIdentifierPreparer(compiler.IdentifierPreparer):
     def _unescape_identifier(self, value):
         return value.replace("]]", "]")
 
-    def quote_schema(self, schema, force=None):
+    def quote_schema(self, schema):
         """Prepare a quoted table and schema name."""
-
-        # need to re-implement the deprecation warning entirely
-        if force is not None:
-            # not using the util.deprecated_params() decorator in this
-            # case because of the additional function call overhead on this
-            # very performance-critical spot.
-            util.warn_deprecated(
-                "The IdentifierPreparer.quote_schema.force parameter is "
-                "deprecated and will be removed in a future release.  This "
-                "flag has no effect on the behavior of the "
-                "IdentifierPreparer.quote method; please refer to "
-                "quoted_name().",
-                version="1.3",
-            )
 
         dbname, owner = _schema_elements(schema)
         if dbname:

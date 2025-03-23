@@ -423,7 +423,7 @@ allow mapping database types that can support multiple Python types, such as
 
 The above example maps the union of ``list[int]`` and ``list[str]`` to the Postgresql
 :class:`_postgresql.JSONB` datatype, while naming a union of ``float,
-str, bool`` will match to the :class:`.JSON` datatype.   An equivalent
+str, bool`` will match to the :class:`_types.JSON` datatype.   An equivalent
 union, stated in the :class:`_orm.Mapped` construct, will match into the
 corresponding entry in the type map.
 
@@ -685,6 +685,23 @@ us a wide degree of flexibility, the next section illustrates a second
 way in which ``Annotated`` may be used with Declarative that is even
 more open ended.
 
+
+.. note::  While a ``typing.TypeAliasType`` can be assigned to unions, like in the
+   case of ``JsonScalar`` defined above, it has a different behavior than normal
+   unions defined without the ``type ...`` syntax.
+   The following mapping includes unions that are compatible with ``JsonScalar``,
+   but they will not be recognized::
+
+        class SomeClass(TABase):
+            __tablename__ = "some_table"
+
+            id: Mapped[int] = mapped_column(primary_key=True)
+            col_a: Mapped[str | float | bool | None]
+            col_b: Mapped[str | float | bool]
+
+    This raises an error since the union types used by ``col_a`` or ``col_b``,
+    are not found in ``TABase`` type map and ``JsonScalar`` must be referenced
+    directly.
 
 .. _orm_declarative_mapped_column_pep593:
 
@@ -1502,7 +1519,7 @@ mapper configuration::
 
         __mapper_args__ = {
             "polymorphic_on": __table__.c.type,
-            "polymorhpic_identity": "person",
+            "polymorphic_identity": "person",
         }
 
 The "imperative table" form is also used when a non-:class:`_schema.Table`

@@ -22,7 +22,9 @@ from typing import Callable
 from typing import cast
 from typing import Dict
 from typing import Generic
+from typing import Iterable
 from typing import List
+from typing import Mapping
 from typing import Optional
 from typing import overload
 from typing import Sequence
@@ -60,7 +62,6 @@ from .. import util
 from ..engine import processors
 from ..util import langhelpers
 from ..util import OrderedDict
-from ..util import warn_deprecated
 from ..util.typing import get_args
 from ..util.typing import is_literal
 from ..util.typing import is_pep695
@@ -70,10 +71,12 @@ from ..util.typing import TupleAny
 if TYPE_CHECKING:
     from ._typing import _ColumnExpressionArgument
     from ._typing import _TypeEngineArgument
+    from .elements import ColumnElement
     from .operators import OperatorType
     from .schema import MetaData
     from .type_api import _BindProcessorType
     from .type_api import _ComparatorFactory
+    from .type_api import _LiteralProcessorType
     from .type_api import _MatchedOnType
     from .type_api import _ResultProcessorType
     from ..engine.interfaces import Dialect
@@ -81,6 +84,7 @@ if TYPE_CHECKING:
 _T = TypeVar("_T", bound="Any")
 _CT = TypeVar("_CT", bound=Any)
 _TE = TypeVar("_TE", bound="TypeEngine[Any]")
+_P = TypeVar("_P")
 
 
 class HasExpressionLookup(TypeEngineMixin):
@@ -430,14 +434,7 @@ class NumericCommon(HasExpressionLookup, TypeEngineMixin, Generic[_N]):
     if TYPE_CHECKING:
 
         @util.ro_memoized_property
-        def _type_affinity(
-            self,
-        ) -> Type[
-            Union[
-                Numeric[Union[decimal.Decimal, float]],
-                Float[Union[decimal.Decimal, float]],
-            ]
-        ]: ...
+        def _type_affinity(self) -> Type[Union[Numeric[_N], Float[_N]]]: ...
 
     def __init__(
         self,
@@ -663,8 +660,6 @@ class Float(NumericCommon[_N], TypeEngine[_N]):
     """
 
     __visit_name__ = "float"
-
-    scale: Optional[int] = None
 
     @overload
     def __init__(
@@ -935,6 +930,8 @@ class Time(_RenderISO8601NoT, HasExpressionLookup, TypeEngine[dt.time]):
 
 class _Binary(TypeEngine[bytes]):
     """Define base behavior for binary types."""
+
+    length: Optional[int]
 
     def __init__(self, length: Optional[int] = None):
         self.length = length
@@ -1260,6 +1257,9 @@ class SchemaType(SchemaEventTarget, TypeEngineMixin):
             return _we_are_the_impl(variant_mapping["_default"])
 
 
+_EnumTupleArg = Union[Sequence[enum.Enum], Sequence[str]]
+
+
 class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
     """Generic Enum Type.
 
@@ -1336,9 +1336,18 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
 
     __visit_name__ = "enum"
 
-    enum_class: Union[None, str, type[enum.Enum]]
+    values_callable: Optional[Callable[[Type[enum.Enum]], Sequence[str]]]
+    enum_class: Optional[Type[enum.Enum]]
+    _valid_lookup: Dict[Union[enum.Enum, str, None], Optional[str]]
+    _object_lookup: Dict[Optional[str], Union[enum.Enum, str, None]]
 
-    def __init__(self, *enums: Union[str, type[enum.Enum]], **kw: Any):
+    @overload
+    def __init__(self, enums: Type[enum.Enum], **kw: Any) -> None: ...
+
+    @overload
+    def __init__(self, *enums: str, **kw: Any) -> None: ...
+
+    def __init__(self, *enums: Union[str, Type[enum.Enum]], **kw: Any) -> None:
         r"""Construct an enum.
 
         Keyword arguments which don't apply to a specific backend are ignored
@@ -1451,8 +1460,6 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
            ``__member__`` attribute. For example
            ``lambda x: [i.value for i in x]``.
 
-           .. versionadded:: 1.2.3
-
         :param sort_key_function: a Python callable which may be used as the
            "key" argument in the Python ``sorted()`` built-in.   The SQLAlchemy
            ORM requires that primary key columns which are mapped must
@@ -1462,15 +1469,13 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
            default, the database value of the enumeration is used as the
            sorting function.
 
-           .. versionadded:: 1.3.8
-
         :param omit_aliases: A boolean that when true will remove aliases from
            pep 435 enums. defaults to ``True``.
 
            .. versionchanged:: 2.0 This parameter now defaults to True.
 
         """
-        self._enum_init(enums, kw)
+        self._enum_init(enums, kw)  # type: ignore[arg-type]
 
     @property
     def _enums_argument(self):
@@ -1479,9 +1484,7 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
         else:
             return self.enums
 
-    def _enum_init(
-        self, enums: Sequence[Union[str, type[enum.Enum]]], kw: dict[str, Any]
-    ) -> None:
+    def _enum_init(self, enums: _EnumTupleArg, kw: Dict[str, Any]) -> None:
         """internal init for :class:`.Enum` and subclasses.
 
         friendly init helper used by subclasses to remove
@@ -1543,16 +1546,18 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
         )
 
     def _parse_into_values(
-        self, enums: Sequence[Union[str, type[enum.Enum]]], kw: Any
-    ) -> tuple[Sequence[str], Union[Sequence[enum.Enum], Sequence[str]]]:
+        self, enums: _EnumTupleArg, kw: Any
+    ) -> Tuple[Sequence[str], _EnumTupleArg]:
         if not enums and "_enums" in kw:
             enums = kw.pop("_enums")
 
         if len(enums) == 1 and hasattr(enums[0], "__members__"):
-            self.enum_class = enums[0]
+            self.enum_class = enums[0]  # type: ignore[assignment]
+            assert self.enum_class is not None
 
             _members = self.enum_class.__members__
 
+            members: Mapping[str, enum.Enum]
             if self._omit_aliases is True:
                 # remove aliases
                 members = OrderedDict(
@@ -1613,20 +1618,6 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
             enum_args, native_enum = process_literal(python_type)
         elif is_pep695(python_type):
             value = python_type.__value__
-            if is_pep695(value):
-                new_value = value
-                while is_pep695(new_value):
-                    new_value = new_value.__value__
-                if is_literal(new_value):
-                    value = new_value
-                    warn_deprecated(
-                        f"Mapping recursive TypeAliasType '{python_type}' "
-                        "that resolve to literal to generate an Enum is "
-                        "deprecated. SQLAlchemy 2.1 will not support this "
-                        "use case. Please avoid using recursing "
-                        "TypeAliasType.",
-                        "2.0",
-                    )
             if not is_literal(value):
                 raise exc.ArgumentError(
                     f"Can't associate TypeAliasType '{python_type}' to an "
@@ -1661,7 +1652,7 @@ class Enum(String, SchemaType, Emulated, TypeEngine[Union[str, enum.Enum]]):
     def _setup_for_values(
         self,
         values: Sequence[str],
-        objects: Union[Sequence[enum.Enum], Sequence[str]],
+        objects: _EnumTupleArg,
         kw: Any,
     ) -> None:
         self.enums = list(values)
@@ -1990,10 +1981,6 @@ class Boolean(SchemaType, Emulated, TypeEngine[bool]):
     or ``0`` are accepted as parameter values.   For those backends that
     don't support a "native boolean" datatype, an option exists to
     also create a CHECK constraint on the target column
-
-    .. versionchanged:: 1.2 the :class:`.Boolean` datatype now asserts that
-       incoming Python values are already in pure boolean form.
-
 
     """
 
@@ -2328,8 +2315,6 @@ class JSON(Indexable, TypeEngine[Any]):
 
         data_table.c.data["some key"].as_integer()
 
-      .. versionadded:: 1.3.11
-
     Additional operations may be available from the dialect-specific versions
     of :class:`_types.JSON`, such as
     :class:`sqlalchemy.dialects.postgresql.JSON` and
@@ -2364,9 +2349,6 @@ class JSON(Indexable, TypeEngine[Any]):
 
         # boolean comparison
         data_table.c.data["some_boolean"].as_boolean() == True
-
-    .. versionadded:: 1.3.11 Added type-specific casters for the basic JSON
-       data element types.
 
     .. note::
 
@@ -2447,12 +2429,6 @@ class JSON(Indexable, TypeEngine[Any]):
             "sqlite://",
             json_serializer=lambda obj: json.dumps(obj, ensure_ascii=False),
         )
-
-    .. versionchanged:: 1.3.7
-
-        SQLite dialect's ``json_serializer`` and ``json_deserializer``
-        parameters renamed from ``_json_serializer`` and
-        ``_json_deserializer``.
 
     .. seealso::
 
@@ -2554,17 +2530,21 @@ class JSON(Indexable, TypeEngine[Any]):
         _integer = Integer()
         _string = String()
 
-        def string_bind_processor(self, dialect):
+        def string_bind_processor(
+            self, dialect: Dialect
+        ) -> Optional[_BindProcessorType[str]]:
             return self._string._cached_bind_processor(dialect)
 
-        def string_literal_processor(self, dialect):
+        def string_literal_processor(
+            self, dialect: Dialect
+        ) -> Optional[_LiteralProcessorType[str]]:
             return self._string._cached_literal_processor(dialect)
 
-        def bind_processor(self, dialect):
+        def bind_processor(self, dialect: Dialect) -> _BindProcessorType[Any]:
             int_processor = self._integer._cached_bind_processor(dialect)
             string_processor = self.string_bind_processor(dialect)
 
-            def process(value):
+            def process(value: Optional[Any]) -> Any:
                 if int_processor and isinstance(value, int):
                     value = int_processor(value)
                 elif string_processor and isinstance(value, str):
@@ -2573,11 +2553,13 @@ class JSON(Indexable, TypeEngine[Any]):
 
             return process
 
-        def literal_processor(self, dialect):
+        def literal_processor(
+            self, dialect: Dialect
+        ) -> _LiteralProcessorType[Any]:
             int_processor = self._integer._cached_literal_processor(dialect)
             string_processor = self.string_literal_processor(dialect)
 
-            def process(value):
+            def process(value: Optional[Any]) -> Any:
                 if int_processor and isinstance(value, int):
                     value = int_processor(value)
                 elif string_processor and isinstance(value, str):
@@ -2628,6 +2610,8 @@ class JSON(Indexable, TypeEngine[Any]):
 
         __slots__ = ()
 
+        type: JSON
+
         def _setup_getitem(self, index):
             if not isinstance(index, str) and isinstance(
                 index, collections_abc.Sequence
@@ -2669,8 +2653,6 @@ class JSON(Indexable, TypeEngine[Any]):
                     mytable.c.json_column["some_data"].as_boolean() == True
                 )
 
-            .. versionadded:: 1.3.11
-
             """  # noqa: E501
             return self._binary_w_type(Boolean(), "as_boolean")
 
@@ -2685,8 +2667,6 @@ class JSON(Indexable, TypeEngine[Any]):
                 stmt = select(mytable.c.json_column["some_data"].as_string()).where(
                     mytable.c.json_column["some_data"].as_string() == "some string"
                 )
-
-            .. versionadded:: 1.3.11
 
             """  # noqa: E501
             return self._binary_w_type(Unicode(), "as_string")
@@ -2703,8 +2683,6 @@ class JSON(Indexable, TypeEngine[Any]):
                     mytable.c.json_column["some_data"].as_integer() == 5
                 )
 
-            .. versionadded:: 1.3.11
-
             """  # noqa: E501
             return self._binary_w_type(Integer(), "as_integer")
 
@@ -2719,8 +2697,6 @@ class JSON(Indexable, TypeEngine[Any]):
                 stmt = select(mytable.c.json_column["some_data"].as_float()).where(
                     mytable.c.json_column["some_data"].as_float() == 29.75
                 )
-
-            .. versionadded:: 1.3.11
 
             """  # noqa: E501
             return self._binary_w_type(Float(), "as_float")
@@ -2760,8 +2736,6 @@ class JSON(Indexable, TypeEngine[Any]):
             Note that comparison of full JSON structures may not be
             supported by all backends.
 
-            .. versionadded:: 1.3.11
-
             """
             return self.expr
 
@@ -2782,10 +2756,6 @@ class JSON(Indexable, TypeEngine[Any]):
             return expr
 
     comparator_factory = Comparator
-
-    @property
-    def python_type(self):
-        return dict
 
     @property  # type: ignore  # mypy property bug
     def should_evaluate_none(self):
@@ -2849,7 +2819,7 @@ class JSON(Indexable, TypeEngine[Any]):
 
 
 class ARRAY(
-    SchemaEventTarget, Indexable, Concatenable, TypeEngine[Sequence[Any]]
+    SchemaEventTarget, Indexable, Concatenable, TypeEngine[Sequence[_T]]
 ):
     """Represent a SQL Array type.
 
@@ -2972,7 +2942,7 @@ class ARRAY(
 
     def __init__(
         self,
-        item_type: _TypeEngineArgument[Any],
+        item_type: _TypeEngineArgument[_T],
         as_tuple: bool = False,
         dimensions: Optional[int] = None,
         zero_indexes: bool = False,
@@ -3021,8 +2991,8 @@ class ARRAY(
         self.zero_indexes = zero_indexes
 
     class Comparator(
-        Indexable.Comparator[Sequence[Any]],
-        Concatenable.Comparator[Sequence[Any]],
+        Indexable.Comparator[Sequence[_T]],
+        Concatenable.Comparator[Sequence[_T]],
     ):
         """Define comparison operations for :class:`_types.ARRAY`.
 
@@ -3033,9 +3003,22 @@ class ARRAY(
 
         __slots__ = ()
 
-        type: ARRAY
+        type: ARRAY[_T]
 
-        def _setup_getitem(self, index):
+        @overload
+        def _setup_getitem(
+            self, index: int
+        ) -> Tuple[OperatorType, int, TypeEngine[Any]]: ...
+
+        @overload
+        def _setup_getitem(
+            self, index: slice
+        ) -> Tuple[OperatorType, Slice, TypeEngine[Any]]: ...
+
+        def _setup_getitem(self, index: Union[int, slice]) -> Union[
+            Tuple[OperatorType, int, TypeEngine[Any]],
+            Tuple[OperatorType, Slice, TypeEngine[Any]],
+        ]:
             arr_type = self.type
 
             return_type: TypeEngine[Any]
@@ -3061,7 +3044,7 @@ class ARRAY(
 
                 return operators.getitem, index, return_type
 
-        def contains(self, *arg, **kw):
+        def contains(self, *arg: Any, **kw: Any) -> ColumnElement[bool]:
             """``ARRAY.contains()`` not implemented for the base ARRAY type.
             Use the dialect-specific ARRAY type.
 
@@ -3075,7 +3058,9 @@ class ARRAY(
             )
 
         @util.preload_module("sqlalchemy.sql.elements")
-        def any(self, other, operator=None):
+        def any(
+            self, other: Any, operator: Optional[OperatorType] = None
+        ) -> ColumnElement[bool]:
             """Return ``other operator ANY (array)`` clause.
 
             .. legacy:: This method is an :class:`_types.ARRAY` - specific
@@ -3122,7 +3107,9 @@ class ARRAY(
             )
 
         @util.preload_module("sqlalchemy.sql.elements")
-        def all(self, other, operator=None):
+        def all(
+            self, other: Any, operator: Optional[OperatorType] = None
+        ) -> ColumnElement[bool]:
             """Return ``other operator ALL (array)`` clause.
 
             .. legacy:: This method is an :class:`_types.ARRAY` - specific
@@ -3171,23 +3158,27 @@ class ARRAY(
     comparator_factory = Comparator
 
     @property
-    def hashable(self):
+    def hashable(self) -> bool:  # type: ignore[override]
         return self.as_tuple
 
     @property
-    def python_type(self):
+    def python_type(self) -> Type[Any]:
         return list
 
-    def compare_values(self, x, y):
-        return x == y
+    def compare_values(self, x: Any, y: Any) -> bool:
+        return x == y  # type: ignore[no-any-return]
 
-    def _set_parent(self, parent, outer=False, **kw):
+    def _set_parent(
+        self, parent: SchemaEventTarget, outer: bool = False, **kw: Any
+    ) -> None:
         """Support SchemaEventTarget"""
 
         if not outer and isinstance(self.item_type, SchemaEventTarget):
             self.item_type._set_parent(parent, **kw)
 
-    def _set_parent_with_dispatch(self, parent, **kw):
+    def _set_parent_with_dispatch(
+        self, parent: SchemaEventTarget, **kw: Any
+    ) -> None:
         """Support SchemaEventTarget"""
 
         super()._set_parent_with_dispatch(parent, outer=True)
@@ -3195,17 +3186,19 @@ class ARRAY(
         if isinstance(self.item_type, SchemaEventTarget):
             self.item_type._set_parent_with_dispatch(parent)
 
-    def literal_processor(self, dialect):
+    def literal_processor(
+        self, dialect: Dialect
+    ) -> Optional[_LiteralProcessorType[_T]]:
         item_proc = self.item_type.dialect_impl(dialect).literal_processor(
             dialect
         )
         if item_proc is None:
             return None
 
-        def to_str(elements):
+        def to_str(elements: Iterable[Any]) -> str:
             return f"[{', '.join(elements)}]"
 
-        def process(value):
+        def process(value: Sequence[Any]) -> str:
             inner = self._apply_item_processor(
                 value, item_proc, self.dimensions, to_str
             )
@@ -3213,7 +3206,13 @@ class ARRAY(
 
         return process
 
-    def _apply_item_processor(self, arr, itemproc, dim, collection_callable):
+    def _apply_item_processor(
+        self,
+        arr: Sequence[Any],
+        itemproc: Optional[Callable[[Any], Any]],
+        dim: Optional[int],
+        collection_callable: Callable[[Iterable[Any]], _P],
+    ) -> _P:
         """Helper method that can be used by bind_processor(),
         literal_processor(), etc. to apply an item processor to elements of
         an array value, taking into account the 'dimensions' for this
@@ -3665,6 +3664,7 @@ class Uuid(Emulated, TypeEngine[_UUID_RETURN]):
 
     __visit_name__ = "uuid"
 
+    length: Optional[int] = None
     collation: Optional[str] = None
 
     @overload
@@ -3688,7 +3688,7 @@ class Uuid(Emulated, TypeEngine[_UUID_RETURN]):
          as Python uuid objects, converting to/from string via the
          DBAPI.
 
-         .. versionchanged: 2.0 ``as_uuid`` now defaults to ``True``.
+         .. versionchanged:: 2.0 ``as_uuid`` now defaults to ``True``.
 
         :param native_uuid=True: if True, backends that support either the
          ``UUID`` datatype directly, or a UUID-storing value
@@ -3840,7 +3840,7 @@ class UUID(Uuid[_UUID_RETURN], type_api.NativeForEmulated):
          as Python uuid objects, converting to/from string via the
          DBAPI.
 
-         .. versionchanged: 2.0 ``as_uuid`` now defaults to ``True``.
+         .. versionchanged:: 2.0 ``as_uuid`` now defaults to ``True``.
 
         """
         self.as_uuid = as_uuid

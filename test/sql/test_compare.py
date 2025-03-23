@@ -9,6 +9,7 @@ from sqlalchemy import case
 from sqlalchemy import cast
 from sqlalchemy import Column
 from sqlalchemy import column
+from sqlalchemy import DateTime
 from sqlalchemy import dialects
 from sqlalchemy import exists
 from sqlalchemy import extract
@@ -30,8 +31,6 @@ from sqlalchemy import TypeDecorator
 from sqlalchemy import union
 from sqlalchemy import union_all
 from sqlalchemy import values
-from sqlalchemy.dialects import mysql
-from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import Sequence
 from sqlalchemy.sql import bindparam
 from sqlalchemy.sql import ColumnElement
@@ -46,15 +45,19 @@ from sqlalchemy.sql import visitors
 from sqlalchemy.sql.annotation import Annotated
 from sqlalchemy.sql.base import HasCacheKey
 from sqlalchemy.sql.base import SingletonConstant
+from sqlalchemy.sql.base import SyntaxExtension
 from sqlalchemy.sql.elements import _label_reference
 from sqlalchemy.sql.elements import _textual_label_reference
 from sqlalchemy.sql.elements import BindParameter
 from sqlalchemy.sql.elements import ClauseElement
 from sqlalchemy.sql.elements import ClauseList
 from sqlalchemy.sql.elements import CollationClause
+from sqlalchemy.sql.elements import DQLDMLClauseElement
+from sqlalchemy.sql.elements import ElementList
 from sqlalchemy.sql.elements import Immutable
 from sqlalchemy.sql.elements import Null
 from sqlalchemy.sql.elements import Slice
+from sqlalchemy.sql.elements import TypeClause
 from sqlalchemy.sql.elements import UnaryExpression
 from sqlalchemy.sql.functions import FunctionElement
 from sqlalchemy.sql.functions import GenericFunction
@@ -189,6 +192,15 @@ class CoreFixtures:
         lambda: (
             _label_reference(table_a.c.a.desc()),
             _label_reference(table_a.c.a.asc()),
+        ),
+        lambda: (
+            TypeClause(String(50)),
+            TypeClause(DateTime()),
+        ),
+        lambda: (
+            table_a.c.a,
+            ElementList([table_a.c.a]),
+            ElementList([table_a.c.a, table_a.c.b]),
         ),
         lambda: (_textual_label_reference("a"), _textual_label_reference("b")),
         lambda: (
@@ -987,15 +999,15 @@ class CoreFixtures:
 
     def _statements_w_context_options_fixtures():
         return [
-            select(table_a)._add_context_option(opt1, True),
-            select(table_a)._add_context_option(opt1, 5),
+            select(table_a)._add_compile_state_func(opt1, True),
+            select(table_a)._add_compile_state_func(opt1, 5),
             select(table_a)
-            ._add_context_option(opt1, True)
-            ._add_context_option(opt2, True),
+            ._add_compile_state_func(opt1, True)
+            ._add_compile_state_func(opt2, True),
             select(table_a)
-            ._add_context_option(opt1, True)
-            ._add_context_option(opt2, 5),
-            select(table_a)._add_context_option(opt3, True),
+            ._add_compile_state_func(opt1, True)
+            ._add_compile_state_func(opt2, 5),
+            select(table_a)._add_compile_state_func(opt3, True),
         ]
 
     fixtures.append(_statements_w_context_options_fixtures)
@@ -1212,17 +1224,7 @@ class CoreFixtures:
 
 
 class CacheKeyTest(fixtures.CacheKeyFixture, CoreFixtures, fixtures.TestBase):
-    # we are slightly breaking the policy of not having external dialect
-    # stuff in here, but use pg/mysql as test cases to ensure that these
-    # objects don't report an inaccurate cache key, which is dependent
-    # on the base insert sending out _post_values_clause and the caching
-    # system properly recognizing these constructs as not cacheable
-
     @testing.combinations(
-        postgresql.insert(table_a).on_conflict_do_update(
-            index_elements=[table_a.c.a], set_={"name": "foo"}
-        ),
-        mysql.insert(table_a).on_duplicate_key_update(updated_once=None),
         table_a.insert().values(  # multivalues doesn't cache
             [
                 {"name": "some name"},
@@ -1274,6 +1276,23 @@ class CacheKeyTest(fixtures.CacheKeyFixture, CoreFixtures, fixtures.TestBase):
         is_true(c1._generate_cache_key() != c3._generate_cache_key())
         is_false(c1._generate_cache_key() == c3._generate_cache_key())
 
+    def test_in_with_none(self):
+        """test #12314"""
+
+        def fixture():
+            elements = list(
+                random_choices([1, 2, None, 3, 4], k=random.randint(1, 7))
+            )
+
+            # slight issue.  if the first element is None and not an int,
+            # the type of the BindParameter goes from Integer to Nulltype.
+            # but if we set the left side to be Integer then it comes from
+            # that side, and the vast majority of in_() use cases come from
+            # a typed column expression, so this is fine
+            return (column("x", Integer).in_(elements),)
+
+        self._run_cache_key_fixture(fixture, compare_values=False)
+
     def test_cache_key(self):
         for fixtures_, compare_values in [
             (self.fixtures, True),
@@ -1281,7 +1300,9 @@ class CacheKeyTest(fixtures.CacheKeyFixture, CoreFixtures, fixtures.TestBase):
             (self.type_cache_key_fixtures, False),
         ]:
             for fixture in fixtures_:
-                self._run_cache_key_fixture(fixture, compare_values)
+                self._run_cache_key_fixture(
+                    fixture, compare_values=compare_values
+                )
 
     def test_cache_key_equal(self):
         for fixture in self.equal_fixtures:
@@ -1296,7 +1317,7 @@ class CacheKeyTest(fixtures.CacheKeyFixture, CoreFixtures, fixtures.TestBase):
 
         self._run_cache_key_fixture(
             fixture,
-            True,
+            compare_values=True,
         )
 
     def test_bindparam_subclass_nocache(self):
@@ -1319,7 +1340,7 @@ class CacheKeyTest(fixtures.CacheKeyFixture, CoreFixtures, fixtures.TestBase):
                 _literal_bindparam(None),
             )
 
-        self._run_cache_key_fixture(fixture, True)
+        self._run_cache_key_fixture(fixture, compare_values=True)
 
     def test_cache_key_unknown_traverse(self):
         class Foobar1(ClauseElement):
@@ -1458,6 +1479,7 @@ class HasCacheKeySubclass(fixtures.TestBase):
             "modifiers",
         },
         "next_value": {"sequence"},
+        "array": ({"type", "clauses"}),
     }
 
     ignore_keys = {
@@ -1531,7 +1553,7 @@ class HasCacheKeySubclass(fixtures.TestBase):
         ),
         "FromStatement": (
             {"_raw_columns", "_with_options", "element"}
-            | {"_propagate_attrs", "_with_context_options"},
+            | {"_propagate_attrs", "_compile_state_funcs"},
             {"element", "entities"},
         ),
         "FunctionAsBinary": (
@@ -1587,7 +1609,7 @@ class HasCacheKeySubclass(fixtures.TestBase):
                 "_hints",
                 "_independent_ctes",
                 "_distinct_on",
-                "_with_context_options",
+                "_compile_state_funcs",
                 "_setup_joins",
                 "_suffixes",
                 "_memoized_select_entities",
@@ -1602,6 +1624,10 @@ class HasCacheKeySubclass(fixtures.TestBase):
                 "_annotations",
                 "_fetch_clause_options",
                 "_from_obj",
+                "_post_select_clause",
+                "_post_body_clause",
+                "_post_criteria_clause",
+                "_pre_columns_clause",
             },
             {"entities"},
         ),
@@ -1636,12 +1662,18 @@ class HasCacheKeySubclass(fixtures.TestBase):
             {"_with_options", "_raw_columns", "_setup_joins"},
             {"args"},
         ),
+        "array": ({"type", "clauses"}, {"clauses", "type_"}),
         "next_value": ({"sequence"}, {"seq"}),
     }
 
     @testing.combinations(
         *all_hascachekey_subclasses(
-            ignore_subclasses=[Annotated, NoInit, SingletonConstant]
+            ignore_subclasses=[
+                Annotated,
+                NoInit,
+                SingletonConstant,
+                SyntaxExtension,
+            ]
         )
     )
     def test_init_args_in_traversal(self, cls: type):
@@ -1688,7 +1720,15 @@ class CompareAndCopyTest(CoreFixtures, fixtures.TestBase):
             if "orm" not in cls.__module__
             and "compiler" not in cls.__module__
             and "dialects" not in cls.__module__
-            and issubclass(cls, (ColumnElement, Selectable, LambdaElement))
+            and issubclass(
+                cls,
+                (
+                    ColumnElement,
+                    Selectable,
+                    LambdaElement,
+                    DQLDMLClauseElement,
+                ),
+            )
         )
 
         for fixture in self.fixtures + self.dont_compare_values_fixtures:

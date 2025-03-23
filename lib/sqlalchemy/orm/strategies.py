@@ -77,6 +77,7 @@ def _register_attribute(
     proxy_property=None,
     active_history=False,
     impl_class=None,
+    default_scalar_value=None,
     **kw,
 ):
     listen_hooks = []
@@ -138,6 +139,7 @@ def _register_attribute(
                 typecallable=typecallable,
                 callable_=callable_,
                 active_history=active_history,
+                default_scalar_value=default_scalar_value,
                 impl_class=impl_class,
                 send_modified_events=not useobject or not prop.viewonly,
                 doc=prop.doc,
@@ -257,6 +259,7 @@ class _ColumnLoader(LoaderStrategy):
             useobject=False,
             compare_function=coltype.compare_values,
             active_history=active_history,
+            default_scalar_value=self.parent_property._default_scalar_value,
         )
 
     def create_row_processor(
@@ -370,6 +373,7 @@ class _ExpressionColumnLoader(_ColumnLoader):
             useobject=False,
             compare_function=self.columns[0].type.compare_values,
             accepts_scalar_loader=False,
+            default_scalar_value=self.parent_property._default_scalar_value,
         )
 
 
@@ -455,6 +459,7 @@ class _DeferredColumnLoader(LoaderStrategy):
             compare_function=self.columns[0].type.compare_values,
             callable_=self._load_for_state,
             load_on_unexpire=False,
+            default_scalar_value=self.parent_property._default_scalar_value,
         )
 
     def setup_query(
@@ -638,6 +643,13 @@ class _NoLoader(_AbstractRelationshipLoader):
 
     __slots__ = ()
 
+    @util.deprecated(
+        "2.1",
+        "The ``noload`` loader strategy is deprecated and will be removed "
+        "in a future release.  This option "
+        "produces incorrect results by returning ``None`` for related "
+        "items.",
+    )
     def init_class_attribute(self, mapper):
         self.is_class_level = True
 
@@ -1102,8 +1114,8 @@ class _LazyLoader(
                         ]
                     ).lazyload(rev).process_compile_state(compile_context)
 
-        stmt._with_context_options += (
-            (_lazyload_reverse, self.parent_property),
+        stmt = stmt._add_compile_state_func(
+            _lazyload_reverse, self.parent_property
         )
 
         lazy_clause, params = self._generate_lazy_clause(state, passive)
@@ -1767,7 +1779,7 @@ class _SubqueryLoader(_PostLoader):
                     util.to_list(self.parent_property.order_by)
                 )
 
-            q = q._add_context_option(
+            q = q._add_compile_state_func(
                 _setup_outermost_orderby, self.parent_property
             )
 
@@ -3324,7 +3336,7 @@ class _SelectInLoader(_PostLoader, util.MemoizedSlots):
                         util.to_list(self.parent_property.order_by)
                     )
 
-                q = q._add_context_option(
+                q = q._add_compile_state_func(
                     _setup_outermost_orderby, self.parent_property
                 )
 

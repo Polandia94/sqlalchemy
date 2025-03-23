@@ -599,8 +599,6 @@ class FunctionElement(Executable, ColumnElement[_T], FromClause, Generative):
         :param right_index: the integer 1-based index of the function argument
          that serves as the "right" side of the expression.
 
-        .. versionadded:: 1.3
-
         .. seealso::
 
             :ref:`relationship_custom_operator_sql_function` -
@@ -1456,12 +1454,6 @@ class GenericFunction(Function[_T]):
 
         connection.scalar(select(func.as_utc()))
 
-    .. versionadded:: 1.3.13  The :class:`.quoted_name` construct is now
-       recognized for quoting when used with the "name" attribute of the
-       object, so that quoting can be forced on or off for the function
-       name.
-
-
     """
 
     coerce_arguments = True
@@ -1981,8 +1973,6 @@ class cube(GenericFunction[_T]):
             func.sum(table.c.value), table.c.col_1, table.c.col_2
         ).group_by(func.cube(table.c.col_1, table.c.col_2))
 
-    .. versionadded:: 1.2
-
     """
 
     _has_args = True
@@ -1998,8 +1988,6 @@ class rollup(GenericFunction[_T]):
         stmt = select(
             func.sum(table.c.value), table.c.col_1, table.c.col_2
         ).group_by(func.rollup(table.c.col_1, table.c.col_2))
-
-    .. versionadded:: 1.2
 
     """
 
@@ -2030,8 +2018,6 @@ class grouping_sets(GenericFunction[_T]):
             )
         )
 
-    .. versionadded:: 1.2
-
     """  # noqa: E501
 
     _has_args = True
@@ -2053,7 +2039,7 @@ class aggregate_strings(GenericFunction[str]):
 
     The return type of this function is :class:`.String`.
 
-    .. versionadded: 2.0.21
+    .. versionadded:: 2.0.21
 
     """
 

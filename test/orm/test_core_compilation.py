@@ -20,6 +20,7 @@ from sqlalchemy import true
 from sqlalchemy import union
 from sqlalchemy import update
 from sqlalchemy import util
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import column_property
 from sqlalchemy.orm import contains_eager
@@ -45,6 +46,7 @@ from sqlalchemy.testing import fixtures
 from sqlalchemy.testing import is_
 from sqlalchemy.testing import mock
 from sqlalchemy.testing import Variation
+from sqlalchemy.testing.assertions import expect_deprecated
 from sqlalchemy.testing.fixtures import fixture_session
 from sqlalchemy.testing.util import resolve_lambda
 from sqlalchemy.util.langhelpers import hybridproperty
@@ -365,9 +367,23 @@ class SelectableTest(QueryTest, AssertsCompiledSQL):
 
 
 class PropagateAttrsTest(QueryTest):
+    __backend__ = True
+
     def propagate_cases():
+        def distinct_deprecated(User, user_table):
+            with expect_deprecated("Passing expression to"):
+                return select(1).distinct(User.id).select_from(user_table)
+
         return testing.combinations(
             (lambda: select(1), False),
+            (lambda User: select(User.id), True),
+            (lambda User: select(User.id + User.id), True),
+            (lambda User: select(User.id + User.id + User.id), True),
+            (lambda User: select(sum([User.id] * 10, User.id)), True),  # type: ignore  # noqa: E501
+            (
+                lambda User: select(literal_column("3") + User.id + User.id),
+                True,
+            ),
             (lambda User: select(func.count(User.id)), True),
             (
                 lambda User: select(1).select_from(select(User).subquery()),
@@ -423,8 +439,13 @@ class PropagateAttrsTest(QueryTest):
             ),
             (
                 # changed as part of #9805
-                lambda User, user_table: select(1)
-                .distinct(User.id)
+                distinct_deprecated,
+                True,
+                testing.requires.supports_distinct_on,
+            ),
+            (
+                lambda user_table, User: select(1)
+                .ext(distinct_on(User.id))
                 .select_from(user_table),
                 True,
                 testing.requires.supports_distinct_on,
@@ -1797,7 +1818,7 @@ class InheritedTest(_poly_fixtures._Polymorphic):
     run_setup_mappers = "once"
 
 
-class ExplicitWithPolymorhpicTest(
+class ExplicitWithPolymorphicTest(
     _poly_fixtures._PolymorphicUnions, AssertsCompiledSQL
 ):
     __dialect__ = "default"

@@ -205,10 +205,6 @@ available, which will alter the pysqlite connection using the ``.isolation_level
 attribute on the DBAPI connection and set it to None for the duration
 of the setting.
 
-.. versionadded:: 1.3.16 added support for SQLite AUTOCOMMIT isolation level
-   when using the pysqlite / sqlite3 SQLite driver.
-
-
 The other axis along which SQLite's transactional locking is impacted is
 via the nature of the ``BEGIN`` statement used.   The three varieties
 are "deferred", "immediate", and "exclusive", as described at
@@ -378,9 +374,6 @@ indicated from a :class:`_schema.Column` object.
 
     `ON CONFLICT <https://www.sqlite.org/lang_conflict.html>`_ - in the SQLite
     documentation
-
-.. versionadded:: 1.3
-
 
 The ``sqlite_on_conflict`` parameters accept a  string argument which is just
 the resolution name to be chosen, which on SQLite can be one of ROLLBACK,
@@ -932,7 +925,6 @@ from ...engine import processors
 from ...engine import reflection
 from ...engine.reflection import ReflectionDefaults
 from ...sql import coercions
-from ...sql import ColumnElement
 from ...sql import compiler
 from ...sql import elements
 from ...sql import roles
@@ -1533,16 +1525,11 @@ class SQLiteCompiler(compiler.SQLCompiler):
             else:
                 continue
 
-            if coercions._is_literal(value):
-                value = elements.BindParameter(None, value, type_=c.type)
-
-            else:
-                if (
-                    isinstance(value, elements.BindParameter)
-                    and value.type._isnull
-                ):
-                    value = value._clone()
-                    value.type = c.type
+            if (
+                isinstance(value, elements.BindParameter)
+                and value.type._isnull
+            ):
+                value = value._with_binary_element_type(c.type)
             value_text = self.process(value.self_group(), use_schema=False)
 
             key_text = self.preparer.quote(c.name)
@@ -1594,9 +1581,13 @@ class SQLiteDDLCompiler(compiler.DDLCompiler):
         colspec = self.preparer.format_column(column) + " " + coltype
         default = self.get_column_default_string(column)
         if default is not None:
-            if isinstance(column.server_default.arg, ColumnElement):
-                default = "(" + default + ")"
-            colspec += " DEFAULT " + default
+
+            if not re.match(r"""^\s*[\'\"\(]""", default) and re.match(
+                r".*\W.*", default
+            ):
+                colspec += f" DEFAULT ({default})"
+            else:
+                colspec += f" DEFAULT {default}"
 
         if not column.nullable:
             colspec += " NOT NULL"
@@ -1758,12 +1749,18 @@ class SQLiteDDLCompiler(compiler.DDLCompiler):
         return text
 
     def post_create_table(self, table):
-        text = ""
-        if table.dialect_options["sqlite"]["with_rowid"] is False:
-            text += "\n WITHOUT ROWID"
-        if table.dialect_options["sqlite"]["strict"] is True:
-            text += "\n STRICT"
-        return text
+        table_options = []
+
+        if not table.dialect_options["sqlite"]["with_rowid"]:
+            table_options.append("WITHOUT ROWID")
+
+        if table.dialect_options["sqlite"]["strict"]:
+            table_options.append("STRICT")
+
+        if table_options:
+            return "\n " + ",\n ".join(table_options)
+        else:
+            return ""
 
 
 class SQLiteTypeCompiler(compiler.GenericTypeCompiler):
@@ -2016,35 +2013,15 @@ class SQLiteDialect(default.DefaultDialect):
     _broken_fk_pragma_quotes = False
     _broken_dotted_colnames = False
 
-    @util.deprecated_params(
-        _json_serializer=(
-            "1.3.7",
-            "The _json_serializer argument to the SQLite dialect has "
-            "been renamed to the correct name of json_serializer.  The old "
-            "argument name will be removed in a future release.",
-        ),
-        _json_deserializer=(
-            "1.3.7",
-            "The _json_deserializer argument to the SQLite dialect has "
-            "been renamed to the correct name of json_deserializer.  The old "
-            "argument name will be removed in a future release.",
-        ),
-    )
     def __init__(
         self,
         native_datetime=False,
         json_serializer=None,
         json_deserializer=None,
-        _json_serializer=None,
-        _json_deserializer=None,
         **kwargs,
     ):
         default.DefaultDialect.__init__(self, **kwargs)
 
-        if _json_serializer:
-            json_serializer = _json_serializer
-        if _json_deserializer:
-            json_deserializer = _json_deserializer
         self._json_serializer = json_serializer
         self._json_deserializer = json_deserializer
 

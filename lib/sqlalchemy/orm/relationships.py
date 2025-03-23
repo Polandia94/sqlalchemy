@@ -56,6 +56,7 @@ from .base import PassiveFlag
 from .base import state_str
 from .base import WriteOnlyMapped
 from .interfaces import _AttributeOptions
+from .interfaces import _DataclassDefaultsDontSet
 from .interfaces import _IntrospectsAnnotations
 from .interfaces import MANYTOMANY
 from .interfaces import MANYTOONE
@@ -81,6 +82,7 @@ from ..sql import visitors
 from ..sql._typing import _ColumnExpressionArgument
 from ..sql._typing import _HasClauseElement
 from ..sql.annotation import _safe_annotate
+from ..sql.base import _NoArg
 from ..sql.elements import ColumnClause
 from ..sql.elements import ColumnElement
 from ..sql.util import _deep_annotate
@@ -340,7 +342,10 @@ class _RelationshipArgs(NamedTuple):
 
 @log.class_logger
 class RelationshipProperty(
-    _IntrospectsAnnotations, StrategizedProperty[_T], log.Identified
+    _DataclassDefaultsDontSet,
+    _IntrospectsAnnotations,
+    StrategizedProperty[_T],
+    log.Identified,
 ):
     """Describes an object property that holds a single item or list
     of items that correspond to a related database table.
@@ -453,6 +458,15 @@ class RelationshipProperty(
             _RelationshipArg("remote_side", remote_side, None),
             _StringRelationshipArg("back_populates", back_populates, None),
         )
+
+        if self._attribute_options.dataclasses_default not in (
+            _NoArg.NO_ARG,
+            None,
+        ):
+            raise sa_exc.ArgumentError(
+                "Only 'None' is accepted as dataclass "
+                "default for a relationship()"
+            )
 
         self.post_update = post_update
         self.viewonly = viewonly
@@ -1690,7 +1704,6 @@ class RelationshipProperty(
         return self.entity.mapper
 
     def do_init(self) -> None:
-        self._check_conflicts()
         self._process_dependent_arguments()
         self._setup_entity()
         self._setup_registry_dependencies()
@@ -1988,25 +2001,6 @@ class RelationshipProperty(
 
         return _resolver(self.parent.class_, self)
 
-    def _check_conflicts(self) -> None:
-        """Test that this relationship is legal, warn about
-        inheritance conflicts."""
-        if self.parent.non_primary and not class_mapper(
-            self.parent.class_, configure=False
-        ).has_property(self.key):
-            raise sa_exc.ArgumentError(
-                "Attempting to assign a new "
-                "relationship '%s' to a non-primary mapper on "
-                "class '%s'.  New relationships can only be added "
-                "to the primary mapper, i.e. the very first mapper "
-                "created for class '%s' "
-                % (
-                    self.key,
-                    self.parent.class_.__name__,
-                    self.parent.class_.__name__,
-                )
-            )
-
     @property
     def cascade(self) -> CascadeOptions:
         """Return the current cascade setting for this
@@ -2110,9 +2104,6 @@ class RelationshipProperty(
         """Interpret the 'backref' instruction to create a
         :func:`_orm.relationship` complementary to this one."""
 
-        if self.parent.non_primary:
-            return
-
         resolve_back_populates = self._init_args.back_populates.resolved
 
         if self.backref is not None and not resolve_back_populates:
@@ -2209,6 +2200,18 @@ class RelationshipProperty(
             self._dependency_processor = (  # type: ignore
                 dependency._DependencyProcessor.from_relationship
             )(self)
+
+        if (
+            self.uselist
+            and self._attribute_options.dataclasses_default
+            is not _NoArg.NO_ARG
+        ):
+            raise sa_exc.ArgumentError(
+                f"On relationship {self}, the dataclass default for "
+                "relationship may only be set for "
+                "a relationship that references a scalar value, i.e. "
+                "many-to-one or explicitly uselist=False"
+            )
 
     @util.memoized_property
     def _use_get(self) -> bool:

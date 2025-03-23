@@ -8,6 +8,7 @@ from sqlalchemy import Table
 from sqlalchemy import testing
 from sqlalchemy import text
 from sqlalchemy import true
+from sqlalchemy import union_all
 from sqlalchemy import update
 from sqlalchemy.dialects import mssql
 from sqlalchemy.engine import default
@@ -492,14 +493,20 @@ class CTETest(fixtures.TestBase, AssertsCompiledSQL):
         )
 
     @testing.combinations(True, False, argnames="identical")
-    @testing.combinations(True, False, argnames="use_clone")
-    def test_conflicting_names(self, identical, use_clone):
+    @testing.variation("clone_type", ["none", "clone", "annotated"])
+    def test_conflicting_names(self, identical, clone_type):
         """test a flat out name conflict."""
 
         s1 = select(1)
         c1 = s1.cte(name="cte1", recursive=True)
-        if use_clone:
+        if clone_type.clone:
             c2 = c1._clone()
+            if not identical:
+                c2 = c2.union(select(2))
+        elif clone_type.annotated:
+            # this does not seem to trigger the issue that was fixed in
+            # #12364 howver is still a worthy test
+            c2 = c1._annotate({"foo": "bar"})
             if not identical:
                 c2 = c2.union(select(2))
         else:
@@ -511,11 +518,19 @@ class CTETest(fixtures.TestBase, AssertsCompiledSQL):
 
         s = select(c1, c2)
 
-        if use_clone and identical:
+        if clone_type.clone and identical:
             self.assert_compile(
                 s,
                 'WITH RECURSIVE cte1("1") AS (SELECT 1) SELECT cte1.1, '
                 'cte1.1 AS "1_1" FROM cte1',
+            )
+        elif clone_type.annotated and identical:
+            # annotated seems to have a slightly different rendering
+            # scheme here
+            self.assert_compile(
+                s,
+                'WITH RECURSIVE cte1("1") AS (SELECT 1) SELECT cte1.1, '
+                'cte1.1 AS "1__1" FROM cte1',
             )
         else:
             assert_raises_message(
@@ -523,6 +538,32 @@ class CTETest(fixtures.TestBase, AssertsCompiledSQL):
                 "Multiple, unrelated CTEs found with the same name: 'cte1'",
                 s.compile,
             )
+
+    @testing.variation("annotated", [True, False])
+    def test_cte_w_annotated(self, annotated):
+        """test #12364"""
+
+        A = table("a", column("i"), column("j"))
+        B = table("b", column("i"), column("j"))
+
+        a = select(A).where(A.c.i > A.c.j).cte("filtered_a")
+
+        if annotated:
+            a = a._annotate({"foo": "bar"})
+
+        a1 = select(a.c.i, literal(1).label("j"))
+        b = select(B).join(a, a.c.i == B.c.i).where(B.c.j.is_not(None))
+
+        query = union_all(a1, b)
+        self.assert_compile(
+            query,
+            "WITH filtered_a AS "
+            "(SELECT a.i AS i, a.j AS j FROM a WHERE a.i > a.j) "
+            "SELECT filtered_a.i, :param_1 AS j FROM filtered_a "
+            "UNION ALL SELECT b.i, b.j "
+            "FROM b JOIN filtered_a ON filtered_a.i = b.i "
+            "WHERE b.j IS NOT NULL",
+        )
 
     def test_with_recursive_no_name_currently_buggy(self):
         s1 = select(1)
@@ -1858,6 +1899,37 @@ class CTETest(fixtures.TestBase, AssertsCompiledSQL):
             "INSERT INTO products (id, price) VALUES (:id, :price)",
             checkparams={"id": 1, "price": 20, "param_1": 10, "price_1": 50},
         )
+
+    @testing.variation("num_ctes", ["one", "two"])
+    def test_multiple_multivalues_inserts(self, num_ctes):
+        """test #12363"""
+
+        t1 = table("table1", column("id"), column("a"), column("b"))
+
+        t2 = table("table2", column("id"), column("a"), column("b"))
+
+        if num_ctes.one:
+            self.assert_compile(
+                insert(t1)
+                .values([{"a": 1}, {"a": 2}])
+                .add_cte(insert(t2).values([{"a": 5}, {"a": 6}]).cte()),
+                "WITH anon_1 AS "
+                "(INSERT INTO table2 (a) VALUES (:param_1), (:param_2)) "
+                "INSERT INTO table1 (a) VALUES (:a_m0), (:a_m1)",
+            )
+
+        elif num_ctes.two:
+            self.assert_compile(
+                insert(t1)
+                .values([{"a": 1}, {"a": 2}])
+                .add_cte(insert(t1).values([{"b": 5}, {"b": 6}]).cte())
+                .add_cte(insert(t2).values([{"a": 5}, {"a": 6}]).cte()),
+                "WITH anon_1 AS "
+                "(INSERT INTO table1 (b) VALUES (:param_1), (:param_2)), "
+                "anon_2 AS "
+                "(INSERT INTO table2 (a) VALUES (:param_3), (:param_4)) "
+                "INSERT INTO table1 (a) VALUES (:a_m0), (:a_m1)",
+            )
 
     def test_insert_from_select_uses_independent_cte(self):
         """test #7036"""

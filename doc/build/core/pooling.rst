@@ -558,15 +558,13 @@ close these connections out.   The difference between FIFO and LIFO is
 basically whether or not its desirable for the pool to keep a full set of
 connections ready to go even during idle periods::
 
-    engine = create_engine("postgreql://", pool_use_lifo=True, pool_pre_ping=True)
+    engine = create_engine("postgresql://", pool_use_lifo=True, pool_pre_ping=True)
 
 Above, we also make use of the :paramref:`_sa.create_engine.pool_pre_ping` flag
 so that connections which are closed from the server side are gracefully
 handled by the connection pool and replaced with a new connection.
 
 Note that the flag only applies to :class:`.QueuePool` use.
-
-.. versionadded:: 1.3
 
 .. seealso::
 

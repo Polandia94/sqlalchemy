@@ -1242,7 +1242,7 @@ class TupleTest(fixtures.TestBase):
 class ExtractTest(fixtures.TablesTest):
     """The rationale behind this test is that for many years we've had a system
     of embedding type casts into the expressions rendered by visit_extract()
-    on the postgreql platform.  The reason for this cast is not clear.
+    on the postgresql platform.  The reason for this cast is not clear.
     So here we try to produce a wide range of cases to ensure that these casts
     are not needed; see [ticket:2740].
 
@@ -1639,6 +1639,10 @@ class TableValuedRoundTripTest(fixtures.TestBase):
         )
 
         eq_(connection.execute(stmt).all(), [(4, 1), (3, 2), (2, 3), (1, 4)])
+
+    def test_array_empty_with_type(self, connection):
+        stmt = select(postgresql.array([], type_=Integer))
+        eq_(connection.execute(stmt).all(), [([],)])
 
     def test_plain_old_unnest(self, connection):
         fn = func.unnest(

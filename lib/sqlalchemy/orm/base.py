@@ -97,6 +97,8 @@ class LoaderCallableStatus(Enum):
 
     """
 
+    DONT_SET = 5
+
 
 (
     PASSIVE_NO_RESULT,
@@ -104,6 +106,7 @@ class LoaderCallableStatus(Enum):
     ATTR_WAS_SET,
     ATTR_EMPTY,
     NO_VALUE,
+    DONT_SET,
 ) = tuple(LoaderCallableStatus)
 
 NEVER_SET = NO_VALUE
@@ -145,7 +148,7 @@ class PassiveFlag(FastIntFlag):
     """
 
     NO_AUTOFLUSH = 64
-    """Loader callables should disable autoflush.""",
+    """Loader callables should disable autoflush."""
 
     NO_RAISE = 128
     """Loader callables should not raise any assertions"""
@@ -620,11 +623,7 @@ class InspectionAttr:
     """
 
     _is_internal_proxy = False
-    """True if this object is an internal proxy object.
-
-    .. versionadded:: 1.2.12
-
-    """
+    """True if this object is an internal proxy object."""
 
     is_clause_element = False
     """True if this object is an instance of

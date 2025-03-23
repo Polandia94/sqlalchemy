@@ -359,13 +359,6 @@ def is_pep695(type_: _AnnotationScanType) -> TypeGuard[TypeAliasType]:
     return isinstance(type_, TypeAliasType)
 
 
-def flatten_newtype(type_: NewType) -> Type[Any]:
-    super_type = type_.__supertype__
-    while is_newtype(super_type):
-        super_type = super_type.__supertype__
-    return super_type  # type: ignore[return-value]
-
-
 def pep695_values(type_: _AnnotationScanType) -> Set[Any]:
     """Extracts the value from a TypeAliasType, recursively exploring unions
     and inner TypeAliasType to flatten them into a single set.
@@ -553,7 +546,22 @@ def includes_none(type_: Any) -> bool:
         return any(includes_none(t) for t in pep695_values(type_))
     if is_newtype(type_):
         return includes_none(type_.__supertype__)
-    return type_ in (NoneFwd, NoneType, None)
+    try:
+        return type_ in (NoneFwd, NoneType, None)
+    except TypeError:
+        # if type_ is Column, mapped_column(), etc. the use of "in"
+        # resolves to ``__eq__()`` which then gives us an expression object
+        # that can't resolve to boolean.  just catch it all via exception
+        return False
+
+
+def is_a_type(type_: Any) -> bool:
+    return (
+        isinstance(type_, type)
+        or hasattr(type_, "__origin__")
+        or type_.__module__ in ("typing", "typing_extensions")
+        or type(type_).__mro__[0].__module__ in ("typing", "typing_extensions")
+    )
 
 
 def is_union(type_: Any) -> TypeGuard[ArgsTypeProtocol]:

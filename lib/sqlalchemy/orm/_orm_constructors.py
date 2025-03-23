@@ -1426,11 +1426,6 @@ def relationship(
         issues a JOIN to the immediate parent object, specifying primary
         key identifiers using an IN clause.
 
-      * ``noload`` - no loading should occur at any time.  The related
-        collection will remain empty.   The ``noload`` strategy is not
-        recommended for general use.  For a general use "never load"
-        approach, see :ref:`write_only_relationship`
-
       * ``raise`` - lazy loading is disallowed; accessing
         the attribute, if its value were not already loaded via eager
         loading, will raise an :exc:`~sqlalchemy.exc.InvalidRequestError`.
@@ -1492,6 +1487,13 @@ def relationship(
 
             :ref:`write_only_relationship` - more generally useful approach
             for large collections that should not fully load into memory
+
+      * ``noload`` - no loading should occur at any time.  The related
+        collection will remain empty.
+
+        .. deprecated:: 2.1 The ``noload`` loader strategy is deprecated and
+           will be removed in a future release.  This option produces incorrect
+           results by returning ``None`` for related items.
 
       * True - a synonym for 'select'
 
@@ -1793,8 +1795,6 @@ def relationship(
       default, changes in state will be back-populated only if neither
       sides of a relationship is viewonly.
 
-      .. versionadded:: 1.3.17
-
       .. versionchanged:: 1.4 - A relationship that specifies
          :paramref:`_orm.relationship.viewonly` automatically implies
          that :paramref:`_orm.relationship.sync_backref` is ``False``.
@@ -1814,10 +1814,16 @@ def relationship(
          automatically detected; if it is not detected, then the
          optimization is not supported.
 
-         .. versionchanged:: 1.3.11  setting ``omit_join`` to True will now
-            emit a warning as this was not the intended use of this flag.
+    :param default: Specific to :ref:`orm_declarative_native_dataclasses`,
+     specifies an immutable scalar default value for the relationship that
+     will behave as though it is the default value for the parameter in the
+     ``__init__()`` method.  This is only supported for a ``uselist=False``
+     relationship, that is many-to-one or one-to-one, and only supports the
+     scalar value ``None``, since no other immutable value is valid for such a
+     relationship.
 
-      .. versionadded:: 1.3
+     .. versionchanged:: 2.1 the :paramref:`_orm.relationship.default`
+        parameter only supports a value of ``None``.
 
     :param init: Specific to :ref:`orm_declarative_native_dataclasses`,
      specifies if the mapped attribute should be part of the ``__init__()``
@@ -2206,8 +2212,6 @@ def query_expression(
 
     :param default_expr: Optional SQL expression object that will be used in
         all cases if not assigned later with :func:`_orm.with_expression`.
-
-    .. versionadded:: 1.2
 
     .. seealso::
 

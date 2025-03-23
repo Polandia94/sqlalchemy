@@ -1,7 +1,4 @@
-"""Requirements specific to SQLAlchemy's own unit tests.
-
-
-"""
+"""Requirements specific to SQLAlchemy's own unit tests."""
 
 from sqlalchemy import exc
 from sqlalchemy.sql import sqltypes
@@ -210,6 +207,19 @@ class DefaultRequirements(SuiteRequirements):
                     "native boolean dialect",
                 ),
             ]
+        )
+
+    @property
+    def server_defaults(self):
+        """Target backend supports server side defaults for columns"""
+
+        return exclusions.open()
+
+    @property
+    def expression_server_defaults(self):
+        return skip_if(
+            lambda config: against(config, "mysql", "mariadb")
+            and not self._mysql_expression_defaults(config)
         )
 
     @property
@@ -492,6 +502,13 @@ class DefaultRequirements(SuiteRequirements):
             ["oracle", "sqlite<3.33.0"],
             "Backend does not support UPDATE..FROM",
         )
+
+    @property
+    def update_from_returning(self):
+        """Target must support UPDATE..FROM syntax where RETURNING can
+        return columns from the non-primary FROM clause"""
+
+        return self.update_returning + self.update_from + skip_if("sqlite")
 
     @property
     def update_from_using_alias(self):
@@ -1005,7 +1022,12 @@ class DefaultRequirements(SuiteRequirements):
 
     @property
     def arraysize(self):
-        return skip_if("+pymssql", "DBAPI is missing this attribute")
+        return skip_if(
+            [
+                no_support("+pymssql", "DBAPI is missing this attribute"),
+                no_support("+mysqlconnector", "DBAPI ignores this attribute"),
+            ]
+        )
 
     @property
     def emulated_lastrowid(self):
@@ -1801,6 +1823,15 @@ class DefaultRequirements(SuiteRequirements):
         # 1. we have mysql / mariadb and
         # 2. they dont enforce check constraints
         return not self._mysql_check_constraints_exist(config)
+
+    def _mysql_expression_defaults(self, config):
+        return (against(config, ["mysql", "mariadb"])) and (
+            config.db.dialect._support_default_function
+        )
+
+    @property
+    def mysql_expression_defaults(self):
+        return only_if(self._mysql_expression_defaults)
 
     def _mysql_not_mariadb_102(self, config):
         return (against(config, ["mysql", "mariadb"])) and (

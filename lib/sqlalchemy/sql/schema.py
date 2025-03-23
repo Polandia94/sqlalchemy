@@ -96,9 +96,11 @@ if typing.TYPE_CHECKING:
     from ._typing import _InfoType
     from ._typing import _TextCoercedExpressionArgument
     from ._typing import _TypeEngineArgument
+    from .base import ColumnSet
     from .base import ReadOnlyColumnCollection
     from .compiler import DDLCompiler
     from .elements import BindParameter
+    from .elements import KeyedColumnElement
     from .functions import Function
     from .type_api import TypeEngine
     from .visitors import anon_map
@@ -682,8 +684,6 @@ class Table(
             :class:`_schema.Table` will
             resolve to that table normally.
 
-            .. versionadded:: 1.3
-
             .. seealso::
 
                 :paramref:`.MetaData.reflect.resolve_fks`
@@ -796,10 +796,6 @@ class Table(
 
         :param comment: Optional string that will render an SQL comment on table
             creation.
-
-            .. versionadded:: 1.2 Added the :paramref:`_schema.Table.comment`
-                parameter
-                to :class:`_schema.Table`.
 
         :param \**kw: Additional keyword arguments not mentioned above are
             dialect specific, and passed in the form ``<dialectname>_<argname>``.
@@ -1761,7 +1757,7 @@ class Column(DialectKWArgs, SchemaItem, ColumnClause[_T]):
         :param insert_default: An alias of :paramref:`.Column.default`
             for compatibility with :func:`_orm.mapped_column`.
 
-            .. versionadded: 2.0.31
+            .. versionadded:: 2.0.31
 
         :param doc: optional String that can be used by the ORM or similar
             to document attributes on the Python side.   This attribute does
@@ -2028,10 +2024,6 @@ class Column(DialectKWArgs, SchemaItem, ColumnClause[_T]):
         :param comment: Optional string that will render an SQL comment on
              table creation.
 
-             .. versionadded:: 1.2 Added the
-                :paramref:`_schema.Column.comment`
-                parameter to :class:`_schema.Column`.
-
         :param insert_sentinel: Marks this :class:`_schema.Column` as an
          :term:`insert sentinel` used for optimizing the performance of the
          :term:`insertmanyvalues` feature for tables that don't
@@ -2121,6 +2113,11 @@ class Column(DialectKWArgs, SchemaItem, ColumnClause[_T]):
             self._set_type(self.type)
 
         if insert_default is not _NoArg.NO_ARG:
+            if default is not _NoArg.NO_ARG:
+                raise exc.ArgumentError(
+                    "The 'default' and 'insert_default' parameters "
+                    "of Column are mutually exclusive"
+                )
             resolved_default = insert_default
         elif default is not _NoArg.NO_ARG:
             resolved_default = default
@@ -2531,8 +2528,10 @@ class Column(DialectKWArgs, SchemaItem, ColumnClause[_T]):
 
         return self._schema_item_copy(c)
 
-    def _merge(self, other: Column[Any]) -> None:
-        """merge the elements of another column into this one.
+    def _merge(
+        self, other: Column[Any], *, omit_defaults: bool = False
+    ) -> None:
+        """merge the elements of this column onto "other"
 
         this is used by ORM pep-593 merge and will likely need a lot
         of fixes.
@@ -2573,7 +2572,11 @@ class Column(DialectKWArgs, SchemaItem, ColumnClause[_T]):
             other.nullable = self.nullable
             other._user_defined_nullable = self._user_defined_nullable
 
-        if self.default is not None and other.default is None:
+        if (
+            not omit_defaults
+            and self.default is not None
+            and other.default is None
+        ):
             new_default = self.default._copy()
             new_default._set_parent(other)
 
@@ -2619,6 +2622,8 @@ class Column(DialectKWArgs, SchemaItem, ColumnClause[_T]):
     def _make_proxy(
         self,
         selectable: FromClause,
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
         name: Optional[str] = None,
         key: Optional[str] = None,
         name_is_truncatable: bool = False,
@@ -2688,10 +2693,13 @@ class Column(DialectKWArgs, SchemaItem, ColumnClause[_T]):
         c._propagate_attrs = selectable._propagate_attrs
         if selectable._is_clone_of is not None:
             c._is_clone_of = selectable._is_clone_of.columns.get(c.key)
+
         if self.primary_key:
-            selectable.primary_key.add(c)  # type: ignore
+            primary_key.add(c)
+
         if fk:
-            selectable.foreign_keys.update(fk)  # type: ignore
+            foreign_keys.update(fk)  # type: ignore
+
         return c.key, c
 
 
@@ -2834,9 +2842,18 @@ class ForeignKey(DialectKWArgs, SchemaItem):
             issuing DDL for this constraint. Typical values include CASCADE,
             DELETE and RESTRICT.
 
+            .. seealso::
+
+                :ref:`on_update_on_delete`
+
         :param ondelete: Optional string. If set, emit ON DELETE <value> when
             issuing DDL for this constraint. Typical values include CASCADE,
-            DELETE and RESTRICT.
+            SET NULL and RESTRICT.  Some dialects may allow for additional
+            syntaxes.
+
+            .. seealso::
+
+                :ref:`on_update_on_delete`
 
         :param deferrable: Optional bool. If set, emit DEFERRABLE or NOT
             DEFERRABLE when issuing DDL for this constraint.
@@ -3508,7 +3525,7 @@ class ColumnDefault(DefaultGenerator, ABC):
 class ScalarElementColumnDefault(ColumnDefault):
     """default generator for a fixed scalar Python value
 
-    .. versionadded: 2.0
+    .. versionadded:: 2.0
 
     """
 
@@ -3656,8 +3673,6 @@ class CallableColumnDefault(ColumnDefault):
 
 class IdentityOptions(DialectKWArgs):
     """Defines options for a named database sequence or an identity column.
-
-    .. versionadded:: 1.3.18
 
     .. seealso::
 
@@ -4684,12 +4699,21 @@ class ForeignKeyConstraint(ColumnCollectionConstraint):
         :param name: Optional, the in-database name of the key.
 
         :param onupdate: Optional string. If set, emit ON UPDATE <value> when
-          issuing DDL for this constraint. Typical values include CASCADE,
-          DELETE and RESTRICT.
+            issuing DDL for this constraint. Typical values include CASCADE,
+            DELETE and RESTRICT.
+
+            .. seealso::
+
+                :ref:`on_update_on_delete`
 
         :param ondelete: Optional string. If set, emit ON DELETE <value> when
-          issuing DDL for this constraint. Typical values include CASCADE,
-          DELETE and RESTRICT.
+            issuing DDL for this constraint. Typical values include CASCADE,
+            SET NULL and RESTRICT.  Some dialects may allow for additional
+            syntaxes.
+
+            .. seealso::
+
+                :ref:`on_update_on_delete`
 
         :param deferrable: Optional bool. If set, emit DEFERRABLE or NOT
           DEFERRABLE when issuing DDL for this constraint.
@@ -5578,11 +5602,6 @@ class MetaData(HasSchemaAttr):
               it along with a ``fn(constraint, table)`` callable to the
               naming_convention dictionary.
 
-          .. versionadded:: 1.3.0 - added new ``%(column_0N_name)s``,
-             ``%(column_0_N_name)s``, and related tokens that produce
-             concatenations of names, keys, or labels for all columns referred
-             to by a given constraint.
-
           .. seealso::
 
                 :ref:`constraint_naming_conventions` - for detailed usage
@@ -5714,13 +5733,6 @@ class MetaData(HasSchemaAttr):
             collection when cycles are detected so that they may be applied
             to a schema separately.
 
-            .. versionchanged:: 1.3.17 - a warning is emitted when
-               :attr:`.MetaData.sorted_tables` cannot perform a proper sort
-               due to cyclical dependencies.  This will be an exception in a
-               future release.  Additionally, the sort will continue to return
-               other tables not involved in the cycle in dependency order which
-               was not the case previously.
-
         .. seealso::
 
             :func:`_schema.sort_tables`
@@ -5844,8 +5856,6 @@ class MetaData(HasSchemaAttr):
          :class:`_schema.Table` after the :meth:`_schema.MetaData.reflect`
          operation is
          complete.   Defaults to True.
-
-         .. versionadded:: 1.3.0
 
          .. seealso::
 
@@ -6026,8 +6036,6 @@ class Computed(FetchedValue, SchemaItem):
         )
 
     See the linked documentation below for complete details.
-
-    .. versionadded:: 1.3.11
 
     .. seealso::
 

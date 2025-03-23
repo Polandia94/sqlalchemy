@@ -81,6 +81,7 @@ if typing.TYPE_CHECKING:
     from .interfaces import _DBAPICursorDescription
     from .interfaces import _DBAPIMultiExecuteParams
     from .interfaces import _DBAPISingleExecuteParams
+    from .interfaces import _DBAPISingleExecuteParams
     from .interfaces import _ExecuteOptions
     from .interfaces import _MutableCoreSingleExecuteParams
     from .interfaces import _ParamStyle
@@ -104,6 +105,8 @@ if typing.TYPE_CHECKING:
     from ..sql.type_api import _ResultProcessorType
     from ..sql.type_api import TypeEngine
     from ..util.langhelpers import generic_fn_descriptor
+
+
 
 
 # When we're handed literal SQL, ensure it's a SELECT query
@@ -566,7 +569,7 @@ class DefaultDialect(Dialect):
                 % (self.label_length, self.max_identifier_length)
             )
 
-    def on_connect(self) -> Optional[Callable[[Any], None]]:
+    def on_connect(self) -> Optional[Callable[[Any], None]] -> Optional[Callable[[Any], Any]]:
         # inherits the docstring from interfaces.Dialect.on_connect
         return None
 
@@ -576,8 +579,6 @@ class DefaultDialect(Dialect):
 
         If the dialect's class level max_identifier_length should be used,
         can return None.
-
-        .. versionadded:: 1.3.9
 
         """
         return None
@@ -592,8 +593,6 @@ class DefaultDialect(Dialect):
 
         By default, calls the :meth:`_engine.Interfaces.get_isolation_level`
         method, propagating any exceptions raised.
-
-        .. versionadded:: 1.3.22
 
         """
         return self.get_isolation_level(dbapi_conn)
@@ -625,7 +624,7 @@ class DefaultDialect(Dialect):
     ) -> bool:
         return schema_name in self.get_schema_names(connection, **kw)
 
-    def validate_identifier(self, ident):
+    def validate_identifier(self, ident: str) -> None:
         if len(ident) > self.max_identifier_length:
             raise exc.IdentifierError(
                 "Identifier '%s' exceeds maximum length of %d characters"
@@ -2275,12 +2274,6 @@ class DefaultExecutionContext(ExecutionContext):
          to the current column default invocation.   When ``False``, the
          raw parameters of the statement are returned including the
          naming convention used in the case of multi-valued INSERT.
-
-        .. versionadded:: 1.2  added
-           :meth:`.DefaultExecutionContext.get_current_parameters`
-           which provides more functionality over the existing
-           :attr:`.DefaultExecutionContext.current_parameters`
-           attribute.
 
         .. seealso::
 

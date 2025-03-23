@@ -438,12 +438,11 @@ class BIT(sqltypes.TypeEngine[Any]):
     def result_processor(
         self, dialect: Dialect, coltype: object
     ) -> Optional[_ResultProcessorType[Any]]:
-        """Convert a MySQL's 64 bit, variable length binary string to a long.
+        """Convert a MySQL's 64 bit, variable length binary string to a
+        long."""
 
-        TODO: this is MySQL-db, pyodbc specific.  OurSQL and mysqlconnector
-        already do this, so this logic should be moved to those dialects.
-
-        """
+        if dialect.supports_native_bit:
+            return None
 
         def process(value: Optional[Iterable[int]]) -> Optional[int]:
             if value is not None:

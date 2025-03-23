@@ -478,6 +478,13 @@ class _AbstractLoad(traversals.GenerativeOnTraversal, LoaderOption):
         )
         return loader
 
+    @util.deprecated(
+        "2.1",
+        "The :func:`_orm.noload` option is deprecated and will be removed "
+        "in a future release.  This option "
+        "produces incorrect results by returning ``None`` for related "
+        "items.",
+    )
     def noload(self, attr: _AttrType) -> Self:
         """Indicate that the given relationship attribute should remain
         unloaded.
@@ -485,16 +492,8 @@ class _AbstractLoad(traversals.GenerativeOnTraversal, LoaderOption):
         The relationship attribute will return ``None`` when accessed without
         producing any loading effect.
 
-        This function is part of the :class:`_orm.Load` interface and supports
-        both method-chained and standalone operation.
-
         :func:`_orm.noload` applies to :func:`_orm.relationship` attributes
         only.
-
-        .. legacy:: The :func:`_orm.noload` option is **legacy**.  As it
-           forces collections to be empty, which invariably leads to
-           non-intuitive and difficult to predict results.  There are no
-           legitimate uses for this option in modern SQLAlchemy.
 
         .. seealso::
 
@@ -731,8 +730,6 @@ class _AbstractLoad(traversals.GenerativeOnTraversal, LoaderOption):
                 with_expression(SomeClass.x_y_expr, SomeClass.x + SomeClass.y)
             )
 
-        .. versionadded:: 1.2
-
         :param key: Attribute to be populated
 
         :param expr: SQL expression to be applied to the attribute.
@@ -759,8 +756,6 @@ class _AbstractLoad(traversals.GenerativeOnTraversal, LoaderOption):
         This uses an additional SELECT with IN against all matched primary
         key values, and is the per-query analogue to the ``"selectin"``
         setting on the :paramref:`.mapper.polymorphic_load` parameter.
-
-        .. versionadded:: 1.2
 
         .. seealso::
 
@@ -1206,8 +1201,6 @@ class Load(_AbstractLoad):
         :param \*opts: A series of loader option objects (ultimately
          :class:`_orm.Load` objects) which should be applied to the path
          specified by this :class:`_orm.Load` object.
-
-        .. versionadded:: 1.3.6
 
         .. seealso::
 
@@ -2461,35 +2454,18 @@ def defaultload(*keys: _AttrType) -> _AbstractLoad:
 
 
 @loader_unbound_fn
-def defer(
-    key: _AttrType, *addl_attrs: _AttrType, raiseload: bool = False
-) -> _AbstractLoad:
-    if addl_attrs:
-        util.warn_deprecated(
-            "The *addl_attrs on orm.defer is deprecated.  Please use "
-            "method chaining in conjunction with defaultload() to "
-            "indicate a path.",
-            version="1.3",
-        )
-
+def defer(key: _AttrType, *, raiseload: bool = False) -> _AbstractLoad:
     if raiseload:
         kw = {"raiseload": raiseload}
     else:
         kw = {}
 
-    return _generate_from_keys(Load.defer, (key,) + addl_attrs, False, kw)
+    return _generate_from_keys(Load.defer, (key,), False, kw)
 
 
 @loader_unbound_fn
-def undefer(key: _AttrType, *addl_attrs: _AttrType) -> _AbstractLoad:
-    if addl_attrs:
-        util.warn_deprecated(
-            "The *addl_attrs on orm.undefer is deprecated.  Please use "
-            "method chaining in conjunction with defaultload() to "
-            "indicate a path.",
-            version="1.3",
-        )
-    return _generate_from_keys(Load.undefer, (key,) + addl_attrs, False, {})
+def undefer(key: _AttrType) -> _AbstractLoad:
+    return _generate_from_keys(Load.undefer, (key,), False, {})
 
 
 @loader_unbound_fn

@@ -91,6 +91,7 @@ from ..sql.selectable import HasSuffixes
 from ..sql.selectable import LABEL_STYLE_TABLENAME_PLUS_COL
 from ..sql.selectable import SelectLabelStyle
 from ..util import deprecated
+from ..util import warn_deprecated
 from ..util.typing import Literal
 from ..util.typing import Self
 from ..util.typing import TupleAny
@@ -137,6 +138,8 @@ if TYPE_CHECKING:
     from ..sql._typing import _TypedColumnClauseArgument as _TCCA
     from ..sql.base import CacheableOptions
     from ..sql.base import ExecutableOption
+    from ..sql.base import SyntaxExtension
+    from ..sql.dml import UpdateBase
     from ..sql.elements import ColumnElement
     from ..sql.elements import Label
     from ..sql.selectable import _ForUpdateOfArgument
@@ -207,6 +210,8 @@ class Query(
     _label_style: SelectLabelStyle = SelectLabelStyle.LABEL_STYLE_LEGACY_ORM
 
     _memoized_select_entities = ()
+
+    _syntax_extensions: Tuple[SyntaxExtension, ...] = ()
 
     _compile_options: Union[Type[CacheableOptions], CacheableOptions] = (
         _ORMCompileState.default_compile_options
@@ -503,7 +508,7 @@ class Query(
         return cast("Select[_T]", self.statement)
 
     @property
-    def statement(self) -> Union[Select[_T], FromStatement[_T]]:
+    def statement(self) -> Union[Select[_T], FromStatement[_T], UpdateBase]:
         """The full SELECT statement represented by this Query.
 
         The statement by default will not have disambiguating labels
@@ -531,6 +536,8 @@ class Query(
         # from there, it starts to look much like Query itself won't be
         # passed into the execute process and won't generate its own cache
         # key; this will all occur in terms of the ORM-enabled Select.
+        stmt: Union[Select[_T], FromStatement[_T], UpdateBase]
+
         if not self._compile_options._set_base_alias:
             # if we don't have legacy top level aliasing features in use
             # then convert to a future select() directly
@@ -589,7 +596,7 @@ class Query(
             stmt = FromStatement(self._raw_columns, self._statement)
             stmt.__dict__.update(
                 _with_options=self._with_options,
-                _with_context_options=self._with_context_options,
+                _with_context_options=self._compile_state_funcs,
                 _compile_options=compile_options,
                 _execution_options=self._execution_options,
                 _propagate_attrs=self._propagate_attrs,
@@ -597,11 +604,14 @@ class Query(
         else:
             # Query / select() internal attributes are 99% cross-compatible
             stmt = Select._create_raw_select(**self.__dict__)
+
             stmt.__dict__.update(
                 _label_style=self._label_style,
                 _compile_options=compile_options,
                 _propagate_attrs=self._propagate_attrs,
             )
+            for ext in self._syntax_extensions:
+                stmt._apply_syntax_extension_to_self(ext)
             stmt.__dict__.pop("session", None)
 
         # ensure the ORM context is used to compile the statement, even
@@ -802,7 +812,7 @@ class Query(
         )
 
     @property
-    def selectable(self) -> Union[Select[_T], FromStatement[_T]]:
+    def selectable(self) -> Union[Select[_T], FromStatement[_T], UpdateBase]:
         """Return the :class:`_expression.Select` object emitted by this
         :class:`_query.Query`.
 
@@ -813,7 +823,9 @@ class Query(
         """
         return self.__clause_element__()
 
-    def __clause_element__(self) -> Union[Select[_T], FromStatement[_T]]:
+    def __clause_element__(
+        self,
+    ) -> Union[Select[_T], FromStatement[_T], UpdateBase]:
         return (
             self._with_compile_options(
                 _enable_eagerloads=False, _render_for_subquery=True
@@ -861,8 +873,6 @@ class Query(
         Returns True if this query returns a single entity for each instance
         in its result list, and False if this query returns a tuple of entities
         for each result.
-
-        .. versionadded:: 1.3.11
 
         .. seealso::
 
@@ -1117,12 +1127,6 @@ class Query(
          store the object's primary key value, the call would look like::
 
             my_object = query.get({"id": 5, "version_id": 10})
-
-         .. versionadded:: 1.3 the :meth:`_query.Query.get`
-            method now optionally
-            accepts a dictionary of attribute names to values in order to
-            indicate a primary key identifier.
-
 
         :return: The object instance, or ``None``.
 
@@ -1420,6 +1424,7 @@ class Query(
             "_having_criteria",
             "_prefixes",
             "_suffixes",
+            "_syntax_extensions",
         ):
             self.__dict__.pop(attr, None)
         self._set_select_from([fromclause], set_entity_from)
@@ -1703,8 +1708,6 @@ class Query(
 
     def get_execution_options(self) -> _ImmutableExecuteOptions:
         """Get the non-SQL options which will take effect during execution.
-
-        .. versionadded:: 1.3
 
         .. seealso::
 
@@ -2685,17 +2688,44 @@ class Query(
          the PostgreSQL dialect will render a ``DISTINCT ON (<expressions>)``
          construct.
 
-         .. deprecated:: 1.4 Using \*expr in other dialects is deprecated
-            and will raise :class:`_exc.CompileError` in a future version.
+         .. deprecated:: 2.1 Passing expressions to
+           :meth:`_orm.Query.distinct` is deprecated, use
+           :func:`_postgresql.distinct_on` instead.
 
         """
         if expr:
+            warn_deprecated(
+                "Passing expression to ``distinct`` to generate a DISTINCT "
+                "ON clause is deprecated. Use instead the "
+                "``postgresql.distinct_on`` function as an extension.",
+                "2.1",
+            )
             self._distinct = True
             self._distinct_on = self._distinct_on + tuple(
                 coercions.expect(roles.ByOfRole, e) for e in expr
             )
         else:
             self._distinct = True
+        return self
+
+    @_generative
+    def ext(self, extension: SyntaxExtension) -> Self:
+        """Applies a SQL syntax extension to this statement.
+
+        .. seealso::
+
+            :ref:`examples_syntax_extensions`
+
+            :func:`_mysql.limit` - DML LIMIT for MySQL
+
+            :func:`_postgresql.distinct_on` - DISTINCT ON for PostgreSQL
+
+        .. versionadded:: 2.1
+
+        """
+
+        extension = coercions.expect(roles.SyntaxExtensionRole, extension)
+        self._syntax_extensions += (extension,)
         return self
 
     def all(self) -> List[_T]:
@@ -3222,6 +3252,10 @@ class Query(
             delete_ = delete_.with_dialect_options(**delete_args)
 
         delete_._where_criteria = self._where_criteria
+
+        for ext in self._syntax_extensions:
+            delete_._apply_syntax_extension_to_self(ext)
+
         result: CursorResult[Any] = self.session.execute(
             delete_,
             self._params,
@@ -3313,6 +3347,10 @@ class Query(
             upd = upd.with_dialect_options(**update_args)
 
         upd._where_criteria = self._where_criteria
+
+        for ext in self._syntax_extensions:
+            upd._apply_syntax_extension_to_self(ext)
+
         result: CursorResult[Any] = self.session.execute(
             upd,
             self._params,
@@ -3356,7 +3394,9 @@ class Query(
             _ORMCompileState._get_plugin_class_for_plugin(stmt, "orm"),
         )
 
-        return compile_state_cls.create_for_statement(stmt, None)
+        return compile_state_cls._create_orm_context(
+            stmt, toplevel=True, compiler=None
+        )
 
     def _compile_context(self, for_statement: bool = False) -> QueryContext:
         compile_state = self._compile_state(for_statement=for_statement)

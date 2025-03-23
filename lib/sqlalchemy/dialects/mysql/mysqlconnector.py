@@ -13,12 +13,28 @@ r"""
     :connectstring: mysql+mysqlconnector://<user>:<password>@<host>[:<port>]/<dbname>
     :url: https://pypi.org/project/mysql-connector-python/
 
-.. note::
+Driver Status
+-------------
 
-    The MySQL Connector/Python DBAPI has had many issues since its release,
-    some of which may remain unresolved, and the mysqlconnector dialect is
-    **not tested as part of SQLAlchemy's continuous integration**.
-    The recommended MySQL dialects are mysqlclient and PyMySQL.
+MySQL Connector/Python is supported as of SQLAlchemy 2.0.39 to the
+degree which the driver is functional.   There are still ongoing issues
+with features such as server side cursors which remain disabled until
+upstream issues are repaired.
+
+.. versionchanged:: 2.0.39
+
+    The MySQL Connector/Python dialect has been updated to support the
+    latest version of this DBAPI.   Previously, MySQL Connector/Python
+    was not fully supported.
+
+Connecting to MariaDB with MySQL Connector/Python
+--------------------------------------------------
+
+MySQL Connector/Python may attempt to pass an incompatible collation to the
+database when connecting to MariaDB.  Experimentation has shown that using
+``?charset=utf8mb4&collation=utfmb4_general_ci`` or similar MariaDB-compatible
+charset/collation will allow connectivity.
+
 
 """  # noqa
 from __future__ import annotations
@@ -31,8 +47,10 @@ from typing import Sequence
 from typing import TYPE_CHECKING
 from typing import Union
 
+from .base import MariaDBIdentifierPreparer
 from .base import MySQLCompiler
 from .base import MySQLDialect
+from .base import MySQLExecutionContext
 from .base import MySQLIdentifierPreparer
 from .mariadb import MariaDBDialect
 from .types import BIT
@@ -56,6 +74,22 @@ if TYPE_CHECKING:
     ]
 
 
+class MySQLExecutionContext_mysqlconnector(MySQLExecutionContext):
+    def create_server_side_cursor(self):
+        return self._dbapi_connection.cursor(buffered=False)
+
+    def create_default_cursor(self):
+        return self._dbapi_connection.cursor(buffered=True)
+
+
+class MySQLExecutionContext_mysqlconnector(MySQLExecutionContext):
+    def create_server_side_cursor(self):
+        return self._dbapi_connection.cursor(buffered=False)
+
+    def create_default_cursor(self):
+        return self._dbapi_connection.cursor(buffered=True)
+
+
 class MySQLCompiler_mysqlconnector(MySQLCompiler):
     def visit_mod_binary(
         self, binary: "BinaryExpression[Any]", operator: Any, **kw: Any
@@ -67,7 +101,7 @@ class MySQLCompiler_mysqlconnector(MySQLCompiler):
         )
 
 
-class MySQLIdentifierPreparer_mysqlconnector(MySQLIdentifierPreparer):
+class IdentifierPreparerCommon_mysqlconnector:
     @property
     def _double_percents(self) -> bool:
         return False
@@ -79,6 +113,18 @@ class MySQLIdentifierPreparer_mysqlconnector(MySQLIdentifierPreparer):
     def _escape_identifier(self, value: str) -> str:
         value = value.replace(self.escape_quote, self.escape_to_quote)
         return value
+
+
+class MySQLIdentifierPreparer_mysqlconnector(
+    IdentifierPreparerCommon_mysqlconnector, MySQLIdentifierPreparer
+):
+    pass
+
+
+class MariaDBIdentifierPreparer_mysqlconnector(
+    IdentifierPreparerCommon_mysqlconnector, MariaDBIdentifierPreparer
+):
+    pass
 
 
 class _myconnpyBIT(BIT):
@@ -97,8 +143,17 @@ class MySQLDialect_mysqlconnector(MySQLDialect):
 
     supports_native_decimal = True
 
+    supports_native_bit = True
+
+    # not until https://bugs.mysql.com/bug.php?id=117548
+    supports_server_side_cursors = False
+
     default_paramstyle = "format"
     statement_compiler = MySQLCompiler_mysqlconnector
+
+    execution_ctx_cls = MySQLExecutionContext_mysqlconnector
+
+    execution_ctx_cls = MySQLExecutionContext_mysqlconnector
 
     preparer: type[MySQLIdentifierPreparer] = (
         MySQLIdentifierPreparer_mysqlconnector
@@ -142,9 +197,13 @@ class MySQLDialect_mysqlconnector(MySQLDialect):
         util.coerce_kw_type(opts, "use_pure", bool)
         util.coerce_kw_type(opts, "use_unicode", bool)
 
-        # unfortunately, MySQL/connector python refuses to release a
-        # cursor without reading fully, so non-buffered isn't an option
-        opts.setdefault("buffered", True)
+        # note that "buffered" is set to False by default in MySQL/connector
+        # python.  If you set it to True, then there is no way to get a server
+        # side cursor because the logic is written to disallow that.
+
+        # leaving this at True until
+        # https://bugs.mysql.com/bug.php?id=117548 can be fixed
+        opts["buffered"] = True
 
         # FOUND_ROWS must be set in ClientFlag to enable
         # supports_sane_rowcount.
@@ -159,6 +218,7 @@ class MySQLDialect_mysqlconnector(MySQLDialect):
                 opts["client_flags"] = client_flags
             except Exception:
                 pass
+
         return [], opts
 
     @util.memoized_property
@@ -179,7 +239,11 @@ class MySQLDialect_mysqlconnector(MySQLDialect):
         self, e: Exception, connection: Any, cursor: Any
     ) -> bool:
         errnos = (2006, 2013, 2014, 2045, 2055, 2048)
-        exceptions = (self.dbapi.OperationalError, self.dbapi.InterfaceError)  # type: ignore[attr-defined] # noqa: E501
+        exceptions = (
+            self.dbapi.OperationalError,
+            self.dbapi.InterfaceError,
+            self.dbapi.ProgrammingError,
+        )  # type: ignore[attr-defined] # noqa: E501
         if isinstance(e, exceptions):
             return (
                 e.errno in errnos
@@ -203,13 +267,21 @@ class MySQLDialect_mysqlconnector(MySQLDialect):
     ) -> Optional[Row[Unpack[tuple[Any, ...]]]]:
         return rp.fetchone()
 
-    _isolation_lookup = {
-        "SERIALIZABLE",
-        "READ UNCOMMITTED",
-        "READ COMMITTED",
-        "REPEATABLE READ",
-        "AUTOCOMMIT",
-    }
+    def get_isolation_level_values(self, dbapi_connection):
+        return (
+            "SERIALIZABLE",
+            "READ UNCOMMITTED",
+            "READ COMMITTED",
+            "REPEATABLE READ",
+            "AUTOCOMMIT",
+        )
+
+    def set_isolation_level(self, connection, level):
+        if level == "AUTOCOMMIT":
+            connection.autocommit = True
+        else:
+            connection.autocommit = False
+            super().set_isolation_level(connection, level)
 
 
 class MariaDBDialect_mysqlconnector(
@@ -217,6 +289,7 @@ class MariaDBDialect_mysqlconnector(
 ):
     supports_statement_cache = True
     _allows_uuid_binds = False
+    preparer = MariaDBIdentifierPreparer_mysqlconnector
 
 
 dialect = MySQLDialect_mysqlconnector

@@ -67,6 +67,7 @@ _T_con = TypeVar("_T_con", bound=Any, contravariant=True)
 _O = TypeVar("_O", bound=object)
 _TE = TypeVar("_TE", bound="TypeEngine[Any]")
 _CT = TypeVar("_CT", bound=Any)
+_RT = TypeVar("_RT", bound=Any)
 
 _MatchedOnType = Union[
     "GenericProtocol[Any]", TypeAliasType, NewType, Type[Any]
@@ -186,10 +187,24 @@ class TypeEngine(Visitable, Generic[_T]):
         def __reduce__(self) -> Any:
             return self.__class__, (self.expr,)
 
+        @overload
+        def operate(
+            self,
+            op: OperatorType,
+            *other: Any,
+            result_type: Type[TypeEngine[_RT]],
+            **kwargs: Any,
+        ) -> ColumnElement[_RT]: ...
+
+        @overload
+        def operate(
+            self, op: OperatorType, *other: Any, **kwargs: Any
+        ) -> ColumnElement[_CT]: ...
+
         @util.preload_module("sqlalchemy.sql.default_comparator")
         def operate(
             self, op: OperatorType, *other: Any, **kwargs: Any
-        ) -> ColumnElement[_CT]:
+        ) -> ColumnElement[Any]:
             default_comparator = util.preloaded.sql_default_comparator
             op_fn, addtl_kw = default_comparator.operator_lookup[op.__name__]
             if kwargs:
@@ -275,8 +290,6 @@ class TypeEngine(Visitable, Generic[_T]):
 
     The default value of ``None`` indicates that the values stored by
     this type are self-sorting.
-
-    .. versionadded:: 1.3.8
 
     """
 
@@ -611,21 +624,22 @@ class TypeEngine(Visitable, Generic[_T]):
     @property
     def python_type(self) -> Type[Any]:
         """Return the Python type object expected to be returned
-        by instances of this type, if known.
+        by instances of this type.
 
         Basically, for those types which enforce a return type,
         or are known across the board to do such for all common
         DBAPIs (like ``int`` for example), will return that type.
 
-        If a return type is not defined, raises
-        ``NotImplementedError``.
+        By default the generic ``object`` type is returned.
 
         Note that any type also accommodates NULL in SQL which
         means you can also get back ``None`` from any type
         in practice.
 
+        .. versionchanged:: 2.1 - The default implementation now returns
+          ``object`` instead of raising ``NotImplementedError``.
         """
-        raise NotImplementedError()
+        return object
 
     def with_variant(
         self,
@@ -1378,8 +1392,7 @@ class UserDefinedType(
 
     if TYPE_CHECKING:
 
-        def get_col_spec(self, **kw: Any) -> str:
-            raise NotImplementedError()
+        def get_col_spec(self, **kw: Any) -> str: ...
 
 
 class Emulated(TypeEngineMixin):
@@ -1395,8 +1408,6 @@ class Emulated(TypeEngineMixin):
 
     Current examples of :class:`.Emulated` are:  :class:`.Interval`,
     :class:`.Enum`, :class:`.Boolean`.
-
-    .. versionadded:: 1.2.0b3
 
     """
 
@@ -1455,11 +1466,7 @@ def _is_native_for_emulated(
 
 
 class NativeForEmulated(TypeEngineMixin):
-    """Indicates DB-native types supported by an :class:`.Emulated` type.
-
-    .. versionadded:: 1.2.0b3
-
-    """
+    """Indicates DB-native types supported by an :class:`.Emulated` type."""
 
     @classmethod
     def adapt_native_to_emulated(

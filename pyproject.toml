@@ -127,10 +127,7 @@ black-line-length = 79
 
 [tool.slotscheck]
 exclude-modules = '''
-^sqlalchemy\.(
-  testing
-  |ext\.mypy  # see slotscheck/issues/178
-)
+^sqlalchemy\.testing
 '''
 
 
@@ -180,6 +177,8 @@ reportTypedDictNotRequiredAccess = "warning"
 mypy_path = "./lib/"
 show_error_codes = true
 incremental = true
+# would be nice to enable this but too many error are surfaceds
+# enable_error_code = "ignore-without-code"
 
 [[tool.mypy.overrides]]
 

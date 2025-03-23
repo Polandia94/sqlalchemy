@@ -52,28 +52,38 @@ class BYTEA(sqltypes.LargeBinary):
     __visit_name__ = "BYTEA"
 
 
-class INET(sqltypes.TypeEngine[str]):
+class _NetworkAddressTypeMixin:
+
+    def coerce_compared_value(
+        self, op: Optional[OperatorType], value: Any
+    ) -> TypeEngine[Any]:
+        if TYPE_CHECKING:
+            assert isinstance(self, TypeEngine)
+        return self
+
+
+class INET(_NetworkAddressTypeMixin, sqltypes.TypeEngine[str]):
     __visit_name__ = "INET"
 
 
 PGInet = INET
 
 
-class CIDR(sqltypes.TypeEngine[str]):
+class CIDR(_NetworkAddressTypeMixin, sqltypes.TypeEngine[str]):
     __visit_name__ = "CIDR"
 
 
 PGCidr = CIDR
 
 
-class MACADDR(sqltypes.TypeEngine[str]):
+class MACADDR(_NetworkAddressTypeMixin, sqltypes.TypeEngine[str]):
     __visit_name__ = "MACADDR"
 
 
 PGMacAddr = MACADDR
 
 
-class MACADDR8(sqltypes.TypeEngine[str]):
+class MACADDR8(_NetworkAddressTypeMixin, sqltypes.TypeEngine[str]):
     __visit_name__ = "MACADDR8"
 
 
@@ -120,8 +130,6 @@ class MONEY(sqltypes.TypeEngine[str]):
             def column_expression(self, column: Any):
                 return cast(column, Numeric())
 
-    .. versionadded:: 1.2
-
     """  # noqa: E501
 
     __visit_name__ = "MONEY"
@@ -154,11 +162,7 @@ class TSQUERY(sqltypes.TypeEngine[str]):
 
 
 class REGCLASS(sqltypes.TypeEngine[str]):
-    """Provide the PostgreSQL REGCLASS type.
-
-    .. versionadded:: 1.2.7
-
-    """
+    """Provide the PostgreSQL REGCLASS type."""
 
     __visit_name__ = "REGCLASS"
 
@@ -218,8 +222,6 @@ class INTERVAL(type_api.NativeForEmulated, sqltypes._AbstractInterval):
         :param fields: string fields specifier.  allows storage of fields
          to be limited, such as ``"YEAR"``, ``"MONTH"``, ``"DAY TO HOUR"``,
          etc.
-
-         .. versionadded:: 1.2
 
         """
         self.precision = precision

@@ -91,6 +91,7 @@ if typing.TYPE_CHECKING:
     from ._typing import _InfoType
     from ._typing import _PropagateAttrsType
     from ._typing import _TypeEngineArgument
+    from .base import ColumnSet
     from .cache_key import _CacheKeyTraversalType
     from .cache_key import CacheKey
     from .compiler import Compiled
@@ -301,8 +302,7 @@ class CompilerElement(Visitable):
             if bind:
                 dialect = bind.dialect
             elif self.stringify_dialect == "default":
-                default = util.preloaded.engine_default
-                dialect = default.StrCompileDialect()
+                dialect = self._default_dialect()
             else:
                 url = util.preloaded.engine_url
                 dialect = url.URL.create(
@@ -310,6 +310,10 @@ class CompilerElement(Visitable):
                 ).get_dialect()()
 
         return self._compiler(dialect, **kw)
+
+    def _default_dialect(self):
+        default = util.preloaded.engine_default
+        return default.StrCompileDialect()
 
     def _compiler(self, dialect: Dialect, **kw: Any) -> Compiled:
         """Return a compiler appropriate for this ClauseElement, given a
@@ -406,6 +410,10 @@ class ClauseElement(
 
         self._propagate_attrs = util.immutabledict(values)
         return self
+
+    def _default_compiler(self) -> SQLCompiler:
+        dialect = self._default_dialect()
+        return dialect.statement_compiler(dialect, self)  # type: ignore
 
     def _clone(self, **kw: Any) -> Self:
         """Create a shallow copy of this ClauseElement.
@@ -1645,6 +1653,8 @@ class ColumnElement(
         self,
         selectable: FromClause,
         *,
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
         name: Optional[str] = None,
         key: Optional[str] = None,
         name_is_truncatable: bool = False,
@@ -2217,9 +2227,10 @@ class TypeClause(DQLDMLClauseElement):
     _traverse_internals: _TraverseInternalsType = [
         ("type", InternalTraversal.dp_type)
     ]
+    type: TypeEngine[Any]
 
     def __init__(self, type_: TypeEngine[Any]):
-        self.type: TypeEngine[Any] = type_
+        self.type = type_
 
 
 class TextClause(
@@ -2411,11 +2422,6 @@ class TextClause(
 
             select id from table where name=:name_1
             UNION ALL select id from table where name=:name_2
-
-        .. versionadded:: 1.3.11  Added support for the
-           :paramref:`.BindParameter.unique` flag to work with
-           :func:`_expression.text`
-           constructs.
 
         """  # noqa: E501
         self._bindparams = new_params = self._bindparams.copy()
@@ -2709,6 +2715,29 @@ class True_(SingletonConstant, roles.ConstExprRole[bool], ColumnElement[bool]):
 True_._create_singleton()
 
 
+class ElementList(DQLDMLClauseElement):
+    """Describe a list of clauses that will be space separated.
+
+    This is a minimal version of :class:`.ClauseList` which is used by
+    the :class:`.HasSyntaxExtension` class.  It does not do any coercions
+    so should be used internally only.
+
+    .. versionadded:: 2.1
+
+    """
+
+    __visit_name__ = "element_list"
+
+    _traverse_internals: _TraverseInternalsType = [
+        ("clauses", InternalTraversal.dp_clauseelement_tuple),
+    ]
+
+    clauses: typing_Tuple[ClauseElement, ...]
+
+    def __init__(self, clauses: Sequence[ClauseElement]):
+        self.clauses = tuple(clauses)
+
+
 class ClauseList(
     roles.InElementRole,
     roles.OrderByRole,
@@ -2986,6 +3015,10 @@ class ExpressionClauseList(OperatorExpression[_T]):
             self.clauses = clauses
         self.operator = operator
         self.type = type_
+        for c in clauses:
+            if c._propagate_attrs:
+                self._propagate_attrs = c._propagate_attrs
+                break
         return self
 
     def _negate(self) -> Any:
@@ -3568,6 +3601,7 @@ class _label_reference(ColumnElement[_T]):
 
     def __init__(self, element: ColumnElement[_T]):
         self.element = element
+        self._propagate_attrs = element._propagate_attrs
 
     @util.ro_non_memoized_property
     def _from_objects(self) -> List[FromClause]:
@@ -3786,7 +3820,9 @@ class CollectionAggregate(UnaryExpression[_T]):
     # operate and reverse_operate are hardwired to
     # dispatch onto the type comparator directly, so that we can
     # ensure "reversed" behavior.
-    def operate(self, op, *other, **kwargs):
+    def operate(
+        self, op: OperatorType, *other: Any, **kwargs: Any
+    ) -> ColumnElement[_T]:
         if not operators.is_comparison(op):
             raise exc.ArgumentError(
                 "Only comparison operators may be used with ANY/ALL"
@@ -3794,7 +3830,9 @@ class CollectionAggregate(UnaryExpression[_T]):
         kwargs["reverse"] = True
         return self.comparator.operate(operators.mirror(op), *other, **kwargs)
 
-    def reverse_operate(self, op, other, **kwargs):
+    def reverse_operate(
+        self, op: OperatorType, other: Any, **kwargs: Any
+    ) -> ColumnElement[_T]:
         # comparison operators should never call reverse_operate
         assert not operators.is_comparison(op)
         raise exc.ArgumentError(
@@ -4587,7 +4625,7 @@ class NamedColumn(KeyedColumnElement[_T]):
         return self.name
 
     @HasMemoized.memoized_attribute
-    def _tq_key_label(self):
+    def _tq_key_label(self) -> Optional[str]:
         """table qualified label based on column key.
 
         for table-bound columns this is <tablename>_<column key/proxy key>;
@@ -4645,6 +4683,8 @@ class NamedColumn(KeyedColumnElement[_T]):
         self,
         selectable: FromClause,
         *,
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
         name: Optional[str] = None,
         key: Optional[str] = None,
         name_is_truncatable: bool = False,
@@ -4772,6 +4812,16 @@ class Label(roles.LabeledColumnExprRole[_T], NamedColumn[_T]):
     def _order_by_label_element(self):
         return self
 
+    def as_reference(self) -> _label_reference[_T]:
+        """refer to this labeled expression in a clause such as GROUP BY,
+        ORDER BY etc. as the label name itself, without expanding
+        into the full expression.
+
+        .. versionadded:: 2.1
+
+        """
+        return _label_reference(self)
+
     @HasMemoized.memoized_attribute
     def element(self) -> ColumnElement[_T]:
         return self._element.self_group(against=operators.as_)
@@ -4825,6 +4875,8 @@ class Label(roles.LabeledColumnExprRole[_T], NamedColumn[_T]):
         self,
         selectable: FromClause,
         *,
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
         name: Optional[str] = None,
         compound_select_cols: Optional[Sequence[ColumnElement[Any]]] = None,
         **kw: Any,
@@ -4837,6 +4889,8 @@ class Label(roles.LabeledColumnExprRole[_T], NamedColumn[_T]):
             disallow_is_literal=True,
             name_is_truncatable=isinstance(name, _truncated_label),
             compound_select_cols=compound_select_cols,
+            primary_key=primary_key,
+            foreign_keys=foreign_keys,
         )
 
         # there was a note here to remove this assertion, which was here
@@ -5073,6 +5127,8 @@ class ColumnClause(
         self,
         selectable: FromClause,
         *,
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
         name: Optional[str] = None,
         key: Optional[str] = None,
         name_is_truncatable: bool = False,
@@ -5241,10 +5297,6 @@ class quoted_name(util.MemoizedSlots, str):
     The above logic will run the "has table" logic against the Oracle Database
     backend, passing the name exactly as ``"some_table"`` without converting to
     upper case.
-
-    .. versionchanged:: 1.2 The :class:`.quoted_name` construct is now
-       importable from ``sqlalchemy.sql``, in addition to the previous
-       location of ``sqlalchemy.sql.elements``.
 
     """
 

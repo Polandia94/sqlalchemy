@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import itertools
 import re
 import typing
 from typing import Any
@@ -71,14 +70,10 @@ from ..sql.selectable import FromClause
 from ..util import hybridmethod
 from ..util import hybridproperty
 from ..util import typing as compat_typing
-from ..util import warn_deprecated
 from ..util.typing import CallableReference
 from ..util.typing import de_optionalize_union_types
-from ..util.typing import flatten_newtype
 from ..util.typing import is_generic
 from ..util.typing import is_literal
-from ..util.typing import is_newtype
-from ..util.typing import is_pep695
 from ..util.typing import Literal
 from ..util.typing import LITERAL_TYPES
 from ..util.typing import Self
@@ -86,8 +81,8 @@ from ..util.typing import Self
 if TYPE_CHECKING:
     from ._typing import _O
     from ._typing import _RegistryType
-    from .decl_base import _DataclassArguments
     from .instrumentation import ClassManager
+    from .interfaces import _DataclassArguments
     from .interfaces import MapperProperty
     from .state import InstanceState  # noqa
     from ..sql._typing import _TypeEngineArgument
@@ -507,7 +502,7 @@ def declarative_mixin(cls: Type[_T]) -> Type[_T]:
 
     The :func:`_orm.declarative_mixin` decorator currently does not modify
     the given class in any way; it's current purpose is strictly to assist
-    the :ref:`Mypy plugin <mypy_toplevel>` in being able to identify
+    the Mypy plugin in being able to identify
     SQLAlchemy declarative mixin classes when no other context is present.
 
     .. versionadded:: 1.4.6
@@ -515,9 +510,6 @@ def declarative_mixin(cls: Type[_T]) -> Type[_T]:
     .. seealso::
 
         :ref:`orm_mixins_toplevel`
-
-        :ref:`mypy_declarative_mixins` - in the
-        :ref:`Mypy plugin documentation <mypy_toplevel>`
 
     """  # noqa: E501
 
@@ -602,7 +594,6 @@ class MappedAsDataclass(metaclass=DCTransformDeclarative):
             "kw_only": kw_only,
             "dataclass_callable": dataclass_callable,
         }
-
         current_transforms: _DataclassArguments
 
         if hasattr(cls, "_sa_apply_dc_transforms"):
@@ -1142,7 +1133,6 @@ class registry:
 
     _class_registry: clsregistry._ClsRegistryType
     _managers: weakref.WeakKeyDictionary[ClassManager[Any], Literal[True]]
-    _non_primary_mappers: weakref.WeakKeyDictionary[Mapper[Any], Literal[True]]
     metadata: MetaData
     constructor: CallableReference[Callable[..., None]]
     type_annotation_map: _MutableTypeAnnotationMapType
@@ -1204,7 +1194,6 @@ class registry:
 
         self._class_registry = class_registry
         self._managers = weakref.WeakKeyDictionary()
-        self._non_primary_mappers = weakref.WeakKeyDictionary()
         self.metadata = lcl_metadata
         self.constructor = constructor
         self.type_annotation_map = {}
@@ -1233,7 +1222,7 @@ class registry:
         )
 
     def _resolve_type(
-        self, python_type: _MatchedOnType, _do_fallbacks: bool = True
+        self, python_type: _MatchedOnType
     ) -> Optional[sqltypes.TypeEngine[Any]]:
         python_type_type: Type[Any]
         search: Iterable[Tuple[_MatchedOnType, Type[Any]]]
@@ -1278,48 +1267,13 @@ class registry:
                 if resolved_sql_type is not None:
                     return resolved_sql_type
 
-        # 2.0 fallbacks
-        if _do_fallbacks:
-            python_type_to_check: Any = None
-            kind = None
-            if is_pep695(python_type):
-                # NOTE: assume there aren't type alias types of new types.
-                python_type_to_check = python_type
-                while is_pep695(python_type_to_check):
-                    python_type_to_check = python_type_to_check.__value__
-                python_type_to_check = de_optionalize_union_types(
-                    python_type_to_check
-                )
-                kind = "TypeAliasType"
-            if is_newtype(python_type):
-                python_type_to_check = flatten_newtype(python_type)
-                kind = "NewType"
-
-            if python_type_to_check is not None:
-                res_after_fallback = self._resolve_type(
-                    python_type_to_check, False
-                )
-                if res_after_fallback is not None:
-                    assert kind is not None
-                    warn_deprecated(
-                        f"Matching the provided {kind} '{python_type}' on "
-                        "its resolved value without matching it in the "
-                        "type_annotation_map is deprecated; add this type to "
-                        "the type_annotation_map to allow it to match "
-                        "explicitly.",
-                        "2.0",
-                    )
-                    return res_after_fallback
-
         return None
 
     @property
     def mappers(self) -> FrozenSet[Mapper[Any]]:
         """read only collection of all :class:`_orm.Mapper` objects."""
 
-        return frozenset(manager.mapper for manager in self._managers).union(
-            self._non_primary_mappers
-        )
+        return frozenset(manager.mapper for manager in self._managers)
 
     def _set_depends_on(self, registry: RegistryType) -> None:
         if registry is self:
@@ -1375,23 +1329,13 @@ class registry:
             todo.update(reg._dependencies.difference(done))
 
     def _mappers_to_configure(self) -> Iterator[Mapper[Any]]:
-        return itertools.chain(
-            (
-                manager.mapper
-                for manager in list(self._managers)
-                if manager.is_mapped
-                and not manager.mapper.configured
-                and manager.mapper._ready_for_configure
-            ),
-            (
-                npm
-                for npm in list(self._non_primary_mappers)
-                if not npm.configured and npm._ready_for_configure
-            ),
+        return (
+            manager.mapper
+            for manager in list(self._managers)
+            if manager.is_mapped
+            and not manager.mapper.configured
+            and manager.mapper._ready_for_configure
         )
-
-    def _add_non_primary_mapper(self, np_mapper: Mapper[Any]) -> None:
-        self._non_primary_mappers[np_mapper] = True
 
     def _dispose_cls(self, cls: Type[_O]) -> None:
         clsregistry._remove_class(cls.__name__, cls, self._class_registry)
@@ -1652,20 +1596,18 @@ class registry:
         """
 
         def decorate(cls: Type[_O]) -> Type[_O]:
-            setattr(
-                cls,
-                "_sa_apply_dc_transforms",
-                {
-                    "init": init,
-                    "repr": repr,
-                    "eq": eq,
-                    "order": order,
-                    "unsafe_hash": unsafe_hash,
-                    "match_args": match_args,
-                    "kw_only": kw_only,
-                    "dataclass_callable": dataclass_callable,
-                },
-            )
+            apply_dc_transforms: _DataclassArguments = {
+                "init": init,
+                "repr": repr,
+                "eq": eq,
+                "order": order,
+                "unsafe_hash": unsafe_hash,
+                "match_args": match_args,
+                "kw_only": kw_only,
+                "dataclass_callable": dataclass_callable,
+            }
+
+            setattr(cls, "_sa_apply_dc_transforms", apply_dc_transforms)
             _as_declarative(self, cls, cls.__dict__)
             return cls
 

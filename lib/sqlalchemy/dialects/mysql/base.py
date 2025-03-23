@@ -181,6 +181,31 @@ For fully atomic transactions as well as support for foreign key
 constraints, all participating ``CREATE TABLE`` statements must specify a
 transactional engine, which in the vast majority of cases is ``InnoDB``.
 
+Partitioning can similarly be specified using similar options.
+In the example below the create table will specify ``PARTITION_BY``,
+``PARTITIONS``, ``SUBPARTITIONS`` and ``SUBPARTITION_BY``::
+
+    # can also use mariadb_* prefix
+    Table(
+        "testtable",
+        MetaData(),
+        Column("id", Integer(), primary_key=True, autoincrement=True),
+        Column("other_id", Integer(), primary_key=True, autoincrement=False),
+        mysql_partitions="2",
+        mysql_partition_by="KEY(other_id)",
+        mysql_subpartition_by="HASH(some_expr)",
+        mysql_subpartitions="2",
+    )
+
+This will render:
+
+.. sourcecode:: sql
+
+    CREATE TABLE testtable (
+            id INTEGER NOT NULL AUTO_INCREMENT,
+            other_id INTEGER NOT NULL,
+            PRIMARY KEY (id, other_id)
+    )PARTITION BY KEY(other_id) PARTITIONS 2 SUBPARTITION BY HASH(some_expr) SUBPARTITIONS 2
 
 Case Sensitivity and Table Reflection
 -------------------------------------
@@ -485,16 +510,25 @@ available.
 
     select(...).prefix_with(["HIGH_PRIORITY", "SQL_SMALL_RESULT"])
 
-* UPDATE with LIMIT::
+* UPDATE
+  with LIMIT::
 
-    update(...).with_dialect_options(mysql_limit=10, mariadb_limit=10)
+    from sqlalchemy.dialects.mysql import limit
+
+    update(...).ext(limit(10))
+
+  .. versionchanged:: 2.1 the :func:`_mysql.limit()` extension supersedes the
+     previous use of ``mysql_limit``
 
 * DELETE
   with LIMIT::
 
-    delete(...).with_dialect_options(mysql_limit=10, mariadb_limit=10)
+    from sqlalchemy.dialects.mysql import limit
 
-  .. versionadded:: 2.0.37 Added delete with limit
+    delete(...).ext(limit(10))
+
+  .. versionchanged:: 2.1 the :func:`_mysql.limit()` extension supersedes the
+     previous use of ``mysql_limit``
 
 * optimizer hints, use :meth:`_expression.Select.prefix_with` and
   :meth:`_query.Query.prefix_with`::
@@ -637,9 +671,6 @@ this context is unambiguous:
     {printsql}INSERT INTO my_table (id, data) VALUES (%s, %s)
     ON DUPLICATE KEY UPDATE data = %s, updated_at = CURRENT_TIMESTAMP
 
-.. versionchanged:: 1.3 support for parameter-ordered UPDATE clause within
-   MySQL ON DUPLICATE KEY UPDATE
-
 .. warning::
 
     The :meth:`_mysql.Insert.on_duplicate_key_update`
@@ -673,10 +704,6 @@ table:
 
 When rendered, the "inserted" namespace will produce the expression
 ``VALUES(<columnname>)``.
-
-.. versionadded:: 1.2 Added support for MySQL ON DUPLICATE KEY UPDATE clause
-
-
 
 rowcount Support
 ----------------
@@ -781,9 +808,6 @@ is available using the keyword argument ``mysql_with_parser``::
         mariadb_prefix="FULLTEXT",
         mariadb_with_parser="ngram",
     )
-
-.. versionadded:: 1.3
-
 
 .. _mysql_foreign_keys:
 
@@ -1466,16 +1490,14 @@ class MySQLCompiler(compiler.SQLCompiler):
             else:
                 _on_dup_alias_name = "new"
 
-        # traverses through all table columns to preserve table column order
-        for column in (col for col in cols if col.key in on_duplicate.update):
-            val = on_duplicate.update[column.key]
+        on_duplicate_update = {
+            coercions.expect_as_key(roles.DMLColumnRole, key): value
+            for key, value in on_duplicate.update.items()
+        }
 
-            # TODO: this coercion should be up front.  we can't cache
-            # SQL constructs with non-bound literals buried in them
-            if coercions._is_literal(val):
-                val = elements.BindParameter(None, val, type_=column.type)
-                value_text = self.process(val.self_group(), use_schema=False)
-            else:
+        # traverses through all table columns to preserve table column order
+        for column in (col for col in cols if col.key in on_duplicate_update):
+            val = on_duplicate_update[column.key]
 
                 def replace(
                     element: ExternallyTraversible, **kw: Any
@@ -1506,13 +1528,13 @@ class MySQLCompiler(compiler.SQLCompiler):
                         return None
 
                 # val: visitors.ExternallyTraversible
-                val = visitors.replacement_traverse(val, {}, replace)
-                value_text = self.process(val.self_group(), use_schema=False)
+            val = visitors.replacement_traverse(val, {}, replace)
+            value_text = self.process(val.self_group(), use_schema=False)
 
             name_text = self.preparer.quote(column.name)
             clauses.append("%s = %s" % (name_text, value_text))
 
-        non_matching = set(on_duplicate.update) - {c.key for c in cols}
+        non_matching = set(on_duplicate_update) - {c.key for c in cols}
         if non_matching:
             util.warn(
                 "Additional column names not matching "
@@ -1811,19 +1833,35 @@ class MySQLCompiler(compiler.SQLCompiler):
             # No offset provided, so just use the limit
             return " \n LIMIT %s" % (self.process(limit_clause, **kw),)
 
-    def update_limit_clause(self, update_stmt: "Update") -> Optional[str]:
+    def update_post_criteria_clause(self, update_stmt: "Update", **kw) -> Optional[str]:
         limit = update_stmt.kwargs.get("%s_limit" % self.dialect.name, None)
-        if limit is not None:
-            return f"LIMIT {int(limit)}"
-        else:
-            return None
+        supertext = super().update_post_criteria_clause(update_stmt, **kw)
 
-    def delete_limit_clause(self, delete_stmt: "Delete") -> Optional[str]:
-        limit = delete_stmt.kwargs.get("%s_limit" % self.dialect.name, None)
         if limit is not None:
-            return f"LIMIT {int(limit)}"
+            limit_text = f"LIMIT {int(limit)}"
+            if supertext is not None:
+                return f"{limit_text} {supertext}"
+            else:
+                return limit_text
         else:
-            return None
+            return supertext
+
+    def delete_post_criteria_clause(self, delete_stmt: "Delete", **kw) -> Optional[str]:
+        limit = delete_stmt.kwargs.get("%s_limit" % self.dialect.name, None)
+        supertext = super().delete_post_criteria_clause(delete_stmt, **kw)
+
+        if limit is not None:
+            limit_text = f"LIMIT {int(limit)}"
+            if supertext is not None:
+                return f"{limit_text} {supertext}"
+            else:
+                return limit_text
+        else:
+            return supertext
+
+    def visit_mysql_dml_limit_clause(self, element, **kw):
+        kw["literal_execute"] = True
+        return f"LIMIT {self.process(element._limit_clause, **kw)}"
 
     def update_tables_clause(
         self,
@@ -2039,12 +2077,13 @@ class MySQLDDLCompiler(compiler.DDLCompiler):
             colspec.append("AUTO_INCREMENT")
         else:
             default = self.get_column_default_string(column)
+
             if default is not None:
                 if (
-                    isinstance(
-                        column.server_default.arg, functions.FunctionElement  # type: ignore[union-attr]  # noqa: E501
-                    )
-                    and self.dialect._support_default_function
+                    self.dialect._support_default_function
+                    and not re.match(r"^\s*[\'\"\(]", default)
+                    and "ON UPDATE" not in default
+                    and re.match(r".*\W.*", default)
                 ):
                     colspec.append(f"DEFAULT ({default})")
                 else:
@@ -2654,6 +2693,10 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
     # allow for the "true" and "false" keywords, however
     supports_native_boolean = False
 
+    # support for BIT type; mysqlconnector coerces result values automatically,
+    # all other MySQL DBAPIs require a conversion routine
+    supports_native_bit = False
+
     # identifiers are 64, however aliases can be 255...
     max_identifier_length = 255
     max_index_name_length = 64
@@ -2869,10 +2912,12 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
                 % (".".join(map(str, server_version_info)),)
             )
         if is_mariadb:
-            self.preparer = MariaDBIdentifierPreparer
-            # this would have been set by the default dialect already,
-            # so set it again
-            self.identifier_preparer = self.preparer(self)
+
+            if not issubclass(self.preparer, MariaDBIdentifierPreparer):
+                self.preparer = MariaDBIdentifierPreparer
+                # this would have been set by the default dialect already,
+                # so set it again
+                self.identifier_preparer = self.preparer(self)
 
             # this will be updated on first connect in initialize()
             # if using older mariadb version

@@ -1042,10 +1042,6 @@ Operator classes are also supported by the
 :paramref:`_postgresql.ExcludeConstraint.ops` parameter. See that parameter for
 details.
 
-.. versionadded:: 1.3.21 added support for operator classes with
-   :class:`_postgresql.ExcludeConstraint`.
-
-
 Index Types
 ^^^^^^^^^^^
 
@@ -1186,8 +1182,6 @@ dialect in conjunction with the :class:`_schema.Table` construct:
         postgresql_partition_by="LIST (part_column)",
     )
 
-  .. versionadded:: 1.2.6
-
 *
   ``TABLESPACE``::
 
@@ -1263,6 +1257,29 @@ with selected constraint constructs:
       `PostgreSQL ALTER TABLE options
       <https://www.postgresql.org/docs/current/static/sql-altertable.html>`_ -
       in the PostgreSQL documentation.
+
+* Column list with foreign key ``ON DELETE SET`` actions:  This applies to
+  :class:`.ForeignKey` and :class:`.ForeignKeyConstraint`, the :paramref:`.ForeignKey.ondelete`
+  parameter will accept on the PostgreSQL backend only a string list of column
+  names inside parenthesis, following the ``SET NULL`` or ``SET DEFAULT``
+  phrases, which will limit the set of columns that are subject to the
+  action::
+
+        fktable = Table(
+            "fktable",
+            metadata,
+            Column("tid", Integer),
+            Column("id", Integer),
+            Column("fk_id_del_set_null", Integer),
+            ForeignKeyConstraint(
+                columns=["tid", "fk_id_del_set_null"],
+                refcolumns=[pktable.c.tid, pktable.c.id],
+                ondelete="SET NULL (fk_id_del_set_null)",
+            ),
+        )
+
+  .. versionadded:: 2.0.40
+
 
 .. _postgresql_table_valued_overview:
 
@@ -1482,6 +1499,7 @@ from functools import lru_cache
 import re
 from typing import Any
 from typing import cast
+from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Tuple
@@ -1672,6 +1690,7 @@ RESERVED_WORDS = {
     "verbose",
 }
 
+
 colspecs = {
     sqltypes.ARRAY: _array.ARRAY,
     sqltypes.Interval: INTERVAL,
@@ -1788,6 +1807,8 @@ class PGCompiler(compiler.SQLCompiler):
         }"""
 
     def visit_array(self, element, **kw):
+        if not element.clauses and not element.type.item_type._isnull:
+            return "ARRAY[]::%s" % element.type.compile(self.dialect)
         return "ARRAY[%s]" % self.visit_clauselist(element, **kw)
 
     def visit_slice(self, element, **kw):
@@ -1985,6 +2006,21 @@ class PGCompiler(compiler.SQLCompiler):
         else:
             return ""
 
+    def visit_postgresql_distinct_on(self, element, **kw):
+        if self.stack[-1]["selectable"]._distinct_on:
+            raise exc.CompileError(
+                "Cannot mix ``select.ext(distinct_on(...))`` and "
+                "``select.distinct(...)``"
+            )
+
+        if element._distinct_on:
+            cols = ", ".join(
+                self.process(col, **kw) for col in element._distinct_on
+            )
+            return f"ON ({cols})"
+        else:
+            return None
+
     def for_update_clause(self, select, **kw):
         if select._for_update_arg.read:
             if select._for_update_arg.key_share:
@@ -2001,9 +2037,10 @@ class PGCompiler(compiler.SQLCompiler):
             for c in select._for_update_arg.of:
                 tables.update(sql_util.surface_selectables_only(c))
 
+            of_kw = dict(kw)
+            of_kw.update(ashint=True, use_schema=False)
             tmp += " OF " + ", ".join(
-                self.process(table, ashint=True, use_schema=False, **kw)
-                for table in tables
+                self.process(table, **of_kw) for table in tables
             )
 
         if select._for_update_arg.nowait:
@@ -2085,18 +2122,12 @@ class PGCompiler(compiler.SQLCompiler):
             else:
                 continue
 
-            # TODO: this coercion should be up front.  we can't cache
-            # SQL constructs with non-bound literals buried in them
-            if coercions._is_literal(value):
-                value = elements.BindParameter(None, value, type_=c.type)
-
-            else:
-                if (
-                    isinstance(value, elements.BindParameter)
-                    and value.type._isnull
-                ):
-                    value = value._clone()
-                    value.type = c.type
+            assert not coercions._is_literal(value)
+            if (
+                isinstance(value, elements.BindParameter)
+                and value.type._isnull
+            ):
+                value = value._with_binary_element_type(c.type)
             value_text = self.process(value.self_group(), use_schema=False)
 
             key_text = self.preparer.quote(c.name)
@@ -2254,6 +2285,19 @@ class PGDDLCompiler(compiler.DDLCompiler):
         text = super().visit_foreign_key_constraint(constraint)
         text += self._define_constraint_validity(constraint)
         return text
+
+    @util.memoized_property
+    def _fk_ondelete_pattern(self):
+        return re.compile(
+            r"^(?:RESTRICT|CASCADE|SET (?:NULL|DEFAULT)(?:\s*\(.+\))?"
+            r"|NO ACTION)$",
+            re.I,
+        )
+
+    def define_constraint_ondelete_cascade(self, constraint):
+        return " ON DELETE %s" % self.preparer.validate_sql_phrase(
+            constraint.ondelete, self._fk_ondelete_pattern
+        )
 
     def visit_create_enum_type(self, create, **kw):
         type_ = create.element
@@ -3601,6 +3645,7 @@ class PGDialect(default.DefaultDialect):
                         pg_catalog.pg_sequence.c.seqcache,
                         "cycle",
                         pg_catalog.pg_sequence.c.seqcycle,
+                        type_=sqltypes.JSON(),
                     )
                 )
                 .select_from(pg_catalog.pg_sequence)
@@ -3742,8 +3787,8 @@ class PGDialect(default.DefaultDialect):
     def _reflect_type(
         self,
         format_type: Optional[str],
-        domains: dict[str, ReflectedDomain],
-        enums: dict[str, ReflectedEnum],
+        domains: Dict[str, ReflectedDomain],
+        enums: Dict[str, ReflectedEnum],
         type_description: str,
     ) -> sqltypes.TypeEngine[Any]:
         """
@@ -4255,7 +4300,8 @@ class PGDialect(default.DefaultDialect):
             r"[\s]?(ON UPDATE "
             r"(CASCADE|RESTRICT|NO ACTION|SET NULL|SET DEFAULT)+)?"
             r"[\s]?(ON DELETE "
-            r"(CASCADE|RESTRICT|NO ACTION|SET NULL|SET DEFAULT)+)?"
+            r"(CASCADE|RESTRICT|NO ACTION|"
+            r"SET (?:NULL|DEFAULT)(?:\s\(.+\))?)+)?"
             r"[\s]?(DEFERRABLE|NOT DEFERRABLE)?"
             r"[\s]?(INITIALLY (DEFERRED|IMMEDIATE)+)?"
         )
@@ -5010,11 +5056,12 @@ class PGDialect(default.DefaultDialect):
                     key=lambda t: t[0],
                 )
                 for name, def_ in sorted_constraints:
-                    # constraint is in the form "CHECK (expression)".
+                    # constraint is in the form "CHECK (expression)"
+                    # or "NOT NULL". Ignore the "NOT NULL" and
                     # remove "CHECK (" and the tailing ")".
-                    check = def_[7:-1]
-                    constraints.append({"name": name, "check": check})
-
+                    if def_.casefold().startswith("check"):
+                        check = def_[7:-1]
+                        constraints.append({"name": name, "check": check})
             domain_rec: ReflectedDomain = {
                 "name": domain["name"],
                 "schema": domain["schema"],

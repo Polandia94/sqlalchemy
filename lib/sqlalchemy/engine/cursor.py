@@ -21,6 +21,7 @@ from typing import cast
 from typing import ClassVar
 from typing import Dict
 from typing import Iterable
+from typing import Iterable
 from typing import Iterator
 from typing import List
 from typing import Mapping
@@ -1392,6 +1393,7 @@ class FullyBufferedCursorFetchStrategy(CursorFetchStrategy):
             dbapi_cursor = cast(
                 DBAPICursor, dbapi_cursor
             )  # Can't be both None
+            assert dbapi_cursor is not None
             self._rowbuffer = collections.deque(dbapi_cursor.fetchall())
 
     def yield_per(self, result, dbapi_cursor, num):

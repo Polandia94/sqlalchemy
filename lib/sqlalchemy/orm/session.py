@@ -89,6 +89,7 @@ from ..sql.base import CompileState
 from ..sql.schema import Table
 from ..sql.selectable import ForUpdateArg
 from ..sql.selectable import LABEL_STYLE_TABLENAME_PLUS_COL
+from ..util import deprecated_params
 from ..util import IdentitySet
 from ..util.typing import Literal
 from ..util.typing import TupleAny
@@ -205,18 +206,6 @@ def _state_session(state: InstanceState[Any]) -> Optional[Session]:
 
 class _SessionClassMethods:
     """Class-level methods for :class:`.Session`, :class:`.sessionmaker`."""
-
-    @classmethod
-    @util.deprecated(
-        "1.3",
-        "The :meth:`.Session.close_all` method is deprecated and will be "
-        "removed in a future release.  Please refer to "
-        ":func:`.session.close_all_sessions`.",
-    )
-    def close_all(cls) -> None:
-        """Close *all* sessions in memory."""
-
-        close_all_sessions()
 
     @classmethod
     @util.preload_module("sqlalchemy.orm.util")
@@ -3459,7 +3448,7 @@ class Session(_SessionClassMethods, EventTarget):
             if persistent_to_deleted is not None:
                 persistent_to_deleted(self, state)
 
-    def add(self, instance: object, _warn: bool = True) -> None:
+    def add(self, instance: object, *, _warn: bool = True) -> None:
         """Place an object into this :class:`_orm.Session`.
 
         Objects that are in the :term:`transient` state when passed to the
@@ -3544,16 +3533,30 @@ class Session(_SessionClassMethods, EventTarget):
 
             :ref:`session_deleting` - at :ref:`session_basics`
 
+            :meth:`.Session.delete_all` - multiple instance version
+
         """
         if self._warn_on_events:
             self._flush_warning("Session.delete()")
 
-        try:
-            state = attributes.instance_state(instance)
-        except exc.NO_STATE as err:
-            raise exc.UnmappedInstanceError(instance) from err
+        self._delete_impl(object_state(instance), instance, head=True)
 
-        self._delete_impl(state, instance, head=True)
+    def delete_all(self, instances: Iterable[object]) -> None:
+        """Calls :meth:`.Session.delete` on multiple instances.
+
+        .. seealso::
+
+            :meth:`.Session.delete` - main documentation on delete
+
+        .. versionadded:: 2.1
+
+        """
+
+        if self._warn_on_events:
+            self._flush_warning("Session.delete_all()")
+
+        for instance in instances:
+            self._delete_impl(object_state(instance), instance, head=True)
 
     def _delete_impl(
         self, state: InstanceState[Any], obj: object, head: bool
@@ -3700,7 +3703,7 @@ class Session(_SessionClassMethods, EventTarget):
          Contents of this dictionary are passed to the
          :meth:`.Session.get_bind` method.
 
-         .. versionadded: 2.0.0rc1
+         .. versionadded:: 2.0.0rc1
 
         :return: The object instance, or ``None``.
 
@@ -3955,32 +3958,62 @@ class Session(_SessionClassMethods, EventTarget):
             :func:`.make_transient_to_detached` - provides for an alternative
             means of "merging" a single object into the :class:`.Session`
 
+            :meth:`.Session.merge_all` - multiple instance version
+
         """
 
         if self._warn_on_events:
             self._flush_warning("Session.merge()")
 
-        _recursive: Dict[InstanceState[Any], object] = {}
-        _resolve_conflict_map: Dict[_IdentityKeyType[Any], object] = {}
+        if load:
+            # flush current contents if we expect to load data
+            self._autoflush()
+
+        with self.no_autoflush:
+            return self._merge(
+                object_state(instance),
+                attributes.instance_dict(instance),
+                load=load,
+                options=options,
+                _recursive={},
+                _resolve_conflict_map={},
+            )
+
+    def merge_all(
+        self,
+        instances: Iterable[_O],
+        *,
+        load: bool = True,
+        options: Optional[Sequence[ORMOption]] = None,
+    ) -> Sequence[_O]:
+        """Calls :meth:`.Session.merge` on multiple instances.
+
+        .. seealso::
+
+            :meth:`.Session.merge` - main documentation on merge
+
+        .. versionadded:: 2.1
+
+        """
+
+        if self._warn_on_events:
+            self._flush_warning("Session.merge_all()")
 
         if load:
             # flush current contents if we expect to load data
             self._autoflush()
 
-        object_mapper(instance)  # verify mapped
-        autoflush = self.autoflush
-        try:
-            self.autoflush = False
-            return self._merge(
-                attributes.instance_state(instance),
+        return [
+            self._merge(
+                object_state(instance),
                 attributes.instance_dict(instance),
                 load=load,
                 options=options,
-                _recursive=_recursive,
-                _resolve_conflict_map=_resolve_conflict_map,
+                _recursive={},
+                _resolve_conflict_map={},
             )
-        finally:
-            self.autoflush = autoflush
+            for instance in instances
+        ]
 
     def _merge(
         self,
@@ -4355,6 +4388,8 @@ class Session(_SessionClassMethods, EventTarget):
           particular objects may need to be operated upon before the
           full flush() occurs.  It is not intended for general use.
 
+          .. deprecated:: 2.1
+
         """
 
         if self._flushing:
@@ -4383,6 +4418,14 @@ class Session(_SessionClassMethods, EventTarget):
             and not self._new
         )
 
+    # have this here since it otherwise causes issues with the proxy
+    # method generation
+    @deprecated_params(
+        objects=(
+            "2.1",
+            "The `objects` parameter of `Session.flush` is deprecated",
+        )
+    )
     def _flush(self, objects: Optional[Sequence[object]] = None) -> None:
         dirty = self._dirty_states
         if not dirty and not self._deleted and not self._new:
@@ -5184,8 +5227,6 @@ def close_all_sessions() -> None:
 
     This function is not for general use but may be useful for test suites
     within the teardown scheme.
-
-    .. versionadded:: 1.3
 
     """
 

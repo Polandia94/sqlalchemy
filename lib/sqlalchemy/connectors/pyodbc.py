@@ -227,11 +227,9 @@ class PyODBCConnector(Connector):
         )
 
     def get_isolation_level_values(
-        self, dbapi_connection: interfaces.DBAPIConnection
-    ) -> list[IsolationLevel]:
-        return super().get_isolation_level_values(dbapi_connection) + [  # type: ignore  # NOQA: E501
-            "AUTOCOMMIT"
-        ]
+        self, dbapi_conn: interfaces.DBAPIConnection
+    ) -> List[IsolationLevel]:
+        return [*super().get_isolation_level_values(dbapi_conn), "AUTOCOMMIT"]
 
     def set_isolation_level(
         self,

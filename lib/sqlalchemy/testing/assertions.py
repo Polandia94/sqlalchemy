@@ -89,6 +89,12 @@ def expect_deprecated(*messages, **kw):
     )
 
 
+def expect_noload_deprecation():
+    return expect_deprecated(
+        r"The (?:``noload`` loader strategy|noload\(\) option) is deprecated."
+    )
+
+
 def expect_deprecated_20(*messages, **kw):
     return _expect_warnings_sqla_only(
         sa_exc.Base20DeprecationWarning, messages, **kw
@@ -274,8 +280,8 @@ def int_within_variance(expected, received, variance):
     )
 
 
-def eq_regex(a, b, msg=None):
-    assert re.match(b, a), msg or "%r !~ %r" % (a, b)
+def eq_regex(a, b, msg=None, flags=0):
+    assert re.match(b, a, flags), msg or "%r !~ %r" % (a, b)
 
 
 def eq_(a, b, msg=None):

@@ -1142,11 +1142,6 @@ Overall, "delete-orphan" cascade is usually applied
 on the "one" side of a one-to-many relationship so that it deletes objects
 in the "many" side, and not the other way around.
 
-.. versionchanged:: 1.3.18  The text of the "delete-orphan" error message
-   when used on a many-to-one or many-to-many relationship has been updated
-   to be more descriptive.
-
-
 .. seealso::
 
     :ref:`unitofwork_cascades`
@@ -1384,7 +1379,7 @@ annotations within class definitions at runtime. A requirement of this form is
 that all ORM annotations must make use of a generic container called
 :class:`_orm.Mapped` to be properly annotated. Legacy SQLAlchemy mappings which
 include explicit :pep:`484` typing annotations, such as those which use the
-:ref:`legacy Mypy extension <mypy_toplevel>` for typing support, may include
+legacy Mypy extension for typing support, may include
 directives such as those for :func:`_orm.relationship` that don't include this
 generic.
 

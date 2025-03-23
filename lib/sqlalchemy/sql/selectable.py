@@ -48,6 +48,8 @@ from . import type_api
 from . import visitors
 from ._typing import _ColumnsClauseArgument
 from ._typing import _no_kw
+from ._typing import _T
+from ._typing import _Ts
 from ._typing import is_column_element
 from ._typing import is_select_statement
 from ._typing import is_subquery
@@ -75,7 +77,9 @@ from .base import Executable
 from .base import Generative
 from .base import HasCompileState
 from .base import HasMemoized
+from .base import HasSyntaxExtensions
 from .base import Immutable
+from .base import SyntaxExtension
 from .coercions import _document_text_coercion
 from .elements import _anonymous_label
 from .elements import BindParameter
@@ -97,17 +101,14 @@ from .visitors import prefix_anon_map
 from .. import exc
 from .. import util
 from ..util import HasMemoized_ro_memoized_attribute
+from ..util import warn_deprecated
 from ..util.typing import Literal
 from ..util.typing import Self
 from ..util.typing import TupleAny
-from ..util.typing import TypeVarTuple
 from ..util.typing import Unpack
 
 
 and_ = BooleanClauseList.and_
-
-_T = TypeVar("_T", bound=Any)
-_Ts = TypeVarTuple("_Ts")
 
 
 if TYPE_CHECKING:
@@ -245,7 +246,11 @@ class ReturnsRows(roles.ReturnsRowsRole, DQLDMLClauseElement):
         raise NotImplementedError()
 
     def _generate_fromclause_column_proxies(
-        self, fromclause: FromClause
+        self,
+        fromclause: FromClause,
+        columns: ColumnCollection[str, KeyedColumnElement[Any]],
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
     ) -> None:
         """Populate columns into an :class:`.AliasedReturnsRows` object."""
 
@@ -287,7 +292,7 @@ class ExecutableReturnsRows(Executable, ReturnsRows):
 
 
 class TypedReturnsRows(ExecutableReturnsRows, Generic[Unpack[_Ts]]):
-    """base for executable statements that return rows."""
+    """base for a typed executable statements that return rows."""
 
 
 class Selectable(ReturnsRows):
@@ -838,10 +843,17 @@ class FromClause(roles.AnonymizedFromClauseRole, Selectable):
         return getattr(self, "name", self.__class__.__name__ + " object")
 
     def _generate_fromclause_column_proxies(
-        self, fromclause: FromClause
+        self,
+        fromclause: FromClause,
+        columns: ColumnCollection[str, KeyedColumnElement[Any]],
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
     ) -> None:
-        fromclause._columns._populate_separate_keys(
-            col._make_proxy(fromclause) for col in self.c
+        columns._populate_separate_keys(
+            col._make_proxy(
+                fromclause, primary_key=primary_key, foreign_keys=foreign_keys
+            )
+            for col in self.c
         )
 
     @util.ro_non_memoized_property
@@ -895,9 +907,29 @@ class FromClause(roles.AnonymizedFromClauseRole, Selectable):
 
         """
         if "_columns" not in self.__dict__:
-            self._init_collections()
-            self._populate_column_collection()
+            self._setup_collections()
         return self._columns.as_readonly()
+
+    def _setup_collections(self) -> None:
+        assert "_columns" not in self.__dict__
+        assert "primary_key" not in self.__dict__
+        assert "foreign_keys" not in self.__dict__
+
+        _columns: ColumnCollection[Any, Any] = ColumnCollection()
+        primary_key = ColumnSet()
+        foreign_keys: Set[KeyedColumnElement[Any]] = set()
+
+        self._populate_column_collection(
+            columns=_columns,
+            primary_key=primary_key,
+            foreign_keys=foreign_keys,
+        )
+
+        # assigning these three collections separately is not itself atomic,
+        # but greatly reduces the surface for problems
+        self._columns = _columns
+        self.primary_key = primary_key  # type: ignore
+        self.foreign_keys = foreign_keys  # type: ignore
 
     @util.ro_non_memoized_property
     def entity_namespace(self) -> _EntityNamespace:
@@ -925,8 +957,7 @@ class FromClause(roles.AnonymizedFromClauseRole, Selectable):
         iterable collection of :class:`_schema.Column` objects.
 
         """
-        self._init_collections()
-        self._populate_column_collection()
+        self._setup_collections()
         return self.primary_key
 
     @util.ro_memoized_property
@@ -943,8 +974,7 @@ class FromClause(roles.AnonymizedFromClauseRole, Selectable):
             :attr:`_schema.Table.foreign_key_constraints`
 
         """
-        self._init_collections()
-        self._populate_column_collection()
+        self._setup_collections()
         return self.foreign_keys
 
     def _reset_column_collection(self) -> None:
@@ -968,20 +998,16 @@ class FromClause(roles.AnonymizedFromClauseRole, Selectable):
     def _select_iterable(self) -> _SelectIterable:
         return (c for c in self.c if not _never_select_column(c))
 
-    def _init_collections(self) -> None:
-        assert "_columns" not in self.__dict__
-        assert "primary_key" not in self.__dict__
-        assert "foreign_keys" not in self.__dict__
-
-        self._columns = ColumnCollection()
-        self.primary_key = ColumnSet()  # type: ignore
-        self.foreign_keys = set()  # type: ignore
-
     @property
     def _cols_populated(self) -> bool:
         return "_columns" in self.__dict__
 
-    def _populate_column_collection(self) -> None:
+    def _populate_column_collection(
+        self,
+        columns: ColumnCollection[str, KeyedColumnElement[Any]],
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
+    ) -> None:
         """Called on subclasses to establish the .c collection.
 
         Each implementation has a different way of establishing
@@ -1308,22 +1334,27 @@ class Join(roles.DMLTableRole, FromClause):
         return FromGrouping(self)
 
     @util.preload_module("sqlalchemy.sql.util")
-    def _populate_column_collection(self) -> None:
+    def _populate_column_collection(
+        self,
+        columns: ColumnCollection[str, KeyedColumnElement[Any]],
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
+    ) -> None:
         sqlutil = util.preloaded.sql_util
-        columns: List[KeyedColumnElement[Any]] = [c for c in self.left.c] + [
+        _columns: List[KeyedColumnElement[Any]] = [c for c in self.left.c] + [
             c for c in self.right.c
         ]
 
-        self.primary_key.extend(  # type: ignore
+        primary_key.extend(  # type: ignore
             sqlutil.reduce_columns(
-                (c for c in columns if c.primary_key), self.onclause
+                (c for c in _columns if c.primary_key), self.onclause
             )
         )
-        self._columns._populate_separate_keys(
-            (col._tq_key_label, col) for col in columns
+        columns._populate_separate_keys(
+            (col._tq_key_label, col) for col in _columns  # type: ignore
         )
-        self.foreign_keys.update(  # type: ignore
-            itertools.chain(*[col.foreign_keys for col in columns])
+        foreign_keys.update(
+            itertools.chain(*[col.foreign_keys for col in _columns])  # type: ignore  # noqa: E501
         )
 
     def _copy_internals(
@@ -1350,7 +1381,7 @@ class Join(roles.DMLTableRole, FromClause):
         def replace(
             obj: Union[BinaryExpression[Any], ColumnClause[Any]],
             **kw: Any,
-        ) -> Optional[KeyedColumnElement[ColumnElement[Any]]]:
+        ) -> Optional[KeyedColumnElement[Any]]:
             if isinstance(obj, ColumnClause) and obj.table in new_froms:
                 newelem = new_froms[obj.table].corresponding_column(obj)
                 return newelem
@@ -1706,8 +1737,15 @@ class AliasedReturnsRows(NoInit, NamedFromClause):
         super()._refresh_for_new_column(column)
         self.element._refresh_for_new_column(column)
 
-    def _populate_column_collection(self) -> None:
-        self.element._generate_fromclause_column_proxies(self)
+    def _populate_column_collection(
+        self,
+        columns: ColumnCollection[str, KeyedColumnElement[Any]],
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
+    ) -> None:
+        self.element._generate_fromclause_column_proxies(
+            self, columns, primary_key=primary_key, foreign_keys=foreign_keys
+        )
 
     @util.ro_non_memoized_property
     def description(self) -> str:
@@ -2147,11 +2185,26 @@ class CTE(
             self._suffixes = _suffixes
         super()._init(selectable, name=name)
 
-    def _populate_column_collection(self) -> None:
+    def _populate_column_collection(
+        self,
+        columns: ColumnCollection[str, KeyedColumnElement[Any]],
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
+    ) -> None:
         if self._cte_alias is not None:
-            self._cte_alias._generate_fromclause_column_proxies(self)
+            self._cte_alias._generate_fromclause_column_proxies(
+                self,
+                columns,
+                primary_key=primary_key,
+                foreign_keys=foreign_keys,
+            )
         else:
-            self.element._generate_fromclause_column_proxies(self)
+            self.element._generate_fromclause_column_proxies(
+                self,
+                columns,
+                primary_key=primary_key,
+                foreign_keys=foreign_keys,
+            )
 
     def alias(self, name: Optional[str] = None, flat: bool = False) -> CTE:
         """Return an :class:`_expression.Alias` of this
@@ -2177,7 +2230,7 @@ class CTE(
             _suffixes=self._suffixes,
         )
 
-    def union(self, *other: _SelectStatementForCompoundArgument) -> CTE:
+    def union(self, *other: _SelectStatementForCompoundArgument[Any]) -> CTE:
         r"""Return a new :class:`_expression.CTE` with a SQL ``UNION``
         of the original CTE against the given selectables provided
         as positional arguments.
@@ -2206,7 +2259,9 @@ class CTE(
             _suffixes=self._suffixes,
         )
 
-    def union_all(self, *other: _SelectStatementForCompoundArgument) -> CTE:
+    def union_all(
+        self, *other: _SelectStatementForCompoundArgument[Any]
+    ) -> CTE:
         r"""Return a new :class:`_expression.CTE` with a SQL ``UNION ALL``
         of the original CTE against the given selectables provided
         as positional arguments.
@@ -2606,9 +2661,6 @@ class HasCTE(roles.HasCTERole, SelectsRows):
         method may be
         used to establish these.
 
-        .. versionchanged:: 1.3.13 Added support for prefixes.
-           In particular - MATERIALIZED and NOT MATERIALIZED.
-
         :param name: name given to the common table expression.  Like
          :meth:`_expression.FromClause.alias`, the name can be left as
          ``None`` in which case an anonymous symbol will be used at query
@@ -2949,9 +3001,6 @@ class FromGrouping(GroupedElement, FromClause):
     def __init__(self, element: FromClause):
         self.element = coercions.expect(roles.FromClauseRole, element)
 
-    def _init_collections(self) -> None:
-        pass
-
     @util.ro_non_memoized_property
     def columns(
         self,
@@ -3110,9 +3159,6 @@ class TableClause(roles.DMLTableRole, Immutable, NamedFromClause):
             return self.name
 
     def _refresh_for_new_column(self, column: ColumnElement[Any]) -> None:
-        pass
-
-    def _init_collections(self) -> None:
         pass
 
     @util.ro_memoized_property
@@ -3376,16 +3422,23 @@ class Values(roles.InElementRole, Generative, LateralFromClause):
         """
         return ScalarValues(self._column_args, self._data, self.literal_binds)
 
-    def _populate_column_collection(self) -> None:
+    def _populate_column_collection(
+        self,
+        columns: ColumnCollection[str, KeyedColumnElement[Any]],
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
+    ) -> None:
         for c in self._column_args:
             if c.table is not None and c.table is not self:
-                _, c = c._make_proxy(self)
+                _, c = c._make_proxy(
+                    self, primary_key=primary_key, foreign_keys=foreign_keys
+                )
             else:
                 # if the column was used in other contexts, ensure
                 # no memoizations of other FROM clauses.
                 # see test_values.py -> test_auto_proxy_select_direct_col
                 c._reset_memoizations()
-            self._columns.add(c)
+            columns.add(c)
             c.table = self
 
     @util.ro_non_memoized_property
@@ -3501,6 +3554,9 @@ class SelectBase(
     def _generate_fromclause_column_proxies(
         self,
         subquery: FromClause,
+        columns: ColumnCollection[str, KeyedColumnElement[Any]],
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
         *,
         proxy_compound_columns: Optional[
             Iterable[Sequence[ColumnElement[Any]]]
@@ -3614,7 +3670,7 @@ class SelectBase(
         :meth:`_expression.SelectBase.subquery`
         method.
 
-        .. versionchanged: 1.4 - the ``.as_scalar()`` method was renamed to
+        .. versionchanged:: 1.4 - the ``.as_scalar()`` method was renamed to
            :meth:`_expression.SelectBase.scalar_subquery`.
 
         .. seealso::
@@ -3789,13 +3845,20 @@ class SelectStatementGrouping(GroupedElement, SelectBase, Generic[_SB]):
     def _generate_fromclause_column_proxies(
         self,
         subquery: FromClause,
+        columns: ColumnCollection[str, KeyedColumnElement[Any]],
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
         *,
         proxy_compound_columns: Optional[
             Iterable[Sequence[ColumnElement[Any]]]
         ] = None,
     ) -> None:
         self.element._generate_fromclause_column_proxies(
-            subquery, proxy_compound_columns=proxy_compound_columns
+            subquery,
+            columns,
+            proxy_compound_columns=proxy_compound_columns,
+            primary_key=primary_key,
+            foreign_keys=foreign_keys,
         )
 
     @util.ro_non_memoized_property
@@ -4353,7 +4416,9 @@ class _CompoundSelectKeyword(Enum):
     INTERSECT_ALL = "INTERSECT ALL"
 
 
-class CompoundSelect(HasCompileState, GenerativeSelect, ExecutableReturnsRows):
+class CompoundSelect(
+    HasCompileState, GenerativeSelect, TypedReturnsRows[Unpack[_Ts]]
+):
     """Forms the basis of ``UNION``, ``UNION ALL``, and other
     SELECT-based set operations.
 
@@ -4400,7 +4465,7 @@ class CompoundSelect(HasCompileState, GenerativeSelect, ExecutableReturnsRows):
     def __init__(
         self,
         keyword: _CompoundSelectKeyword,
-        *selects: _SelectStatementForCompoundArgument,
+        *selects: _SelectStatementForCompoundArgument[Unpack[_Ts]],
     ):
         self.keyword = keyword
         self.selects = [
@@ -4414,38 +4479,38 @@ class CompoundSelect(HasCompileState, GenerativeSelect, ExecutableReturnsRows):
 
     @classmethod
     def _create_union(
-        cls, *selects: _SelectStatementForCompoundArgument
-    ) -> CompoundSelect:
+        cls, *selects: _SelectStatementForCompoundArgument[Unpack[_Ts]]
+    ) -> CompoundSelect[Unpack[_Ts]]:
         return CompoundSelect(_CompoundSelectKeyword.UNION, *selects)
 
     @classmethod
     def _create_union_all(
-        cls, *selects: _SelectStatementForCompoundArgument
-    ) -> CompoundSelect:
+        cls, *selects: _SelectStatementForCompoundArgument[Unpack[_Ts]]
+    ) -> CompoundSelect[Unpack[_Ts]]:
         return CompoundSelect(_CompoundSelectKeyword.UNION_ALL, *selects)
 
     @classmethod
     def _create_except(
-        cls, *selects: _SelectStatementForCompoundArgument
-    ) -> CompoundSelect:
+        cls, *selects: _SelectStatementForCompoundArgument[Unpack[_Ts]]
+    ) -> CompoundSelect[Unpack[_Ts]]:
         return CompoundSelect(_CompoundSelectKeyword.EXCEPT, *selects)
 
     @classmethod
     def _create_except_all(
-        cls, *selects: _SelectStatementForCompoundArgument
-    ) -> CompoundSelect:
+        cls, *selects: _SelectStatementForCompoundArgument[Unpack[_Ts]]
+    ) -> CompoundSelect[Unpack[_Ts]]:
         return CompoundSelect(_CompoundSelectKeyword.EXCEPT_ALL, *selects)
 
     @classmethod
     def _create_intersect(
-        cls, *selects: _SelectStatementForCompoundArgument
-    ) -> CompoundSelect:
+        cls, *selects: _SelectStatementForCompoundArgument[Unpack[_Ts]]
+    ) -> CompoundSelect[Unpack[_Ts]]:
         return CompoundSelect(_CompoundSelectKeyword.INTERSECT, *selects)
 
     @classmethod
     def _create_intersect_all(
-        cls, *selects: _SelectStatementForCompoundArgument
-    ) -> CompoundSelect:
+        cls, *selects: _SelectStatementForCompoundArgument[Unpack[_Ts]]
+    ) -> CompoundSelect[Unpack[_Ts]]:
         return CompoundSelect(_CompoundSelectKeyword.INTERSECT_ALL, *selects)
 
     def _scalar_type(self) -> TypeEngine[Any]:
@@ -4462,7 +4527,7 @@ class CompoundSelect(HasCompileState, GenerativeSelect, ExecutableReturnsRows):
                 return True
         return False
 
-    def set_label_style(self, style: SelectLabelStyle) -> CompoundSelect:
+    def set_label_style(self, style: SelectLabelStyle) -> Self:
         if self._label_style is not style:
             self = self._generate()
             select_0 = self.selects[0].set_label_style(style)
@@ -4470,7 +4535,7 @@ class CompoundSelect(HasCompileState, GenerativeSelect, ExecutableReturnsRows):
 
         return self
 
-    def _ensure_disambiguated_names(self) -> CompoundSelect:
+    def _ensure_disambiguated_names(self) -> Self:
         new_select = self.selects[0]._ensure_disambiguated_names()
         if new_select is not self.selects[0]:
             self = self._generate()
@@ -4481,6 +4546,9 @@ class CompoundSelect(HasCompileState, GenerativeSelect, ExecutableReturnsRows):
     def _generate_fromclause_column_proxies(
         self,
         subquery: FromClause,
+        columns: ColumnCollection[str, KeyedColumnElement[Any]],
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
         *,
         proxy_compound_columns: Optional[
             Iterable[Sequence[ColumnElement[Any]]]
@@ -4521,7 +4589,11 @@ class CompoundSelect(HasCompileState, GenerativeSelect, ExecutableReturnsRows):
         # i haven't tried to think what it means for compound nested in
         # compound
         select_0._generate_fromclause_column_proxies(
-            subquery, proxy_compound_columns=extra_col_iterator
+            subquery,
+            columns,
+            proxy_compound_columns=extra_col_iterator,
+            primary_key=primary_key,
+            foreign_keys=foreign_keys,
         )
 
     def _refresh_for_new_column(self, column: ColumnElement[Any]) -> None:
@@ -4589,7 +4661,7 @@ class SelectState(util.MemoizedSlots, CompileState):
     def __init__(
         self,
         statement: Select[Unpack[TupleAny]],
-        compiler: Optional[SQLCompiler],
+        compiler: SQLCompiler,
         **kw: Any,
     ):
         self.statement = statement
@@ -5145,6 +5217,9 @@ class Select(
     HasSuffixes,
     HasHints,
     HasCompileState,
+    HasSyntaxExtensions[
+        Literal["post_select", "pre_columns", "post_criteria", "post_body"]
+    ],
     _SelectFromElements,
     GenerativeSelect,
     TypedReturnsRows[Unpack[_Ts]],
@@ -5153,6 +5228,14 @@ class Select(
 
     The :class:`_sql.Select` object is normally constructed using the
     :func:`_sql.select` function.  See that function for details.
+
+    Available extension points:
+
+    * ``post_select``: applies additional logic after the ``SELECT`` keyword.
+    * ``pre_columns``: applies additional logic between the ``DISTINCT``
+        keyword (if any) and the list of columns.
+    * ``post_criteria``: applies additional logic after the ``HAVING`` clause.
+    * ``post_body``: applies additional logic after the ``FOR UPDATE`` clause.
 
     .. seealso::
 
@@ -5176,6 +5259,49 @@ class Select(
     _where_criteria: Tuple[ColumnElement[Any], ...] = ()
     _having_criteria: Tuple[ColumnElement[Any], ...] = ()
     _from_obj: Tuple[FromClause, ...] = ()
+
+    _position_map = util.immutabledict(
+        {
+            "post_select": "_post_select_clause",
+            "pre_columns": "_pre_columns_clause",
+            "post_criteria": "_post_criteria_clause",
+            "post_body": "_post_body_clause",
+        }
+    )
+
+    _post_select_clause: Optional[ClauseElement] = None
+    """extension point for a ClauseElement that will be compiled directly
+    after the SELECT keyword.
+
+    .. versionadded:: 2.1
+
+    """
+
+    _pre_columns_clause: Optional[ClauseElement] = None
+    """extension point for a ClauseElement that will be compiled directly
+    before the "columns" clause; after DISTINCT (if present).
+
+    .. versionadded:: 2.1
+
+    """
+
+    _post_criteria_clause: Optional[ClauseElement] = None
+    """extension point for a ClauseElement that will be compiled directly
+    after "criteria", following the HAVING clause but before ORDER BY.
+
+    .. versionadded:: 2.1
+
+    """
+
+    _post_body_clause: Optional[ClauseElement] = None
+    """extension point for a ClauseElement that will be compiled directly
+    after the "body", following the ORDER BY, LIMIT, and FOR UPDATE sections
+    of the SELECT.
+
+    .. versionadded:: 2.1
+
+    """
+
     _auto_correlate = True
     _is_select_statement = True
     _compile_options: CacheableOptions = (
@@ -5205,6 +5331,10 @@ class Select(
             ("_distinct", InternalTraversal.dp_boolean),
             ("_distinct_on", InternalTraversal.dp_clauseelement_tuple),
             ("_label_style", InternalTraversal.dp_plain_obj),
+            ("_post_select_clause", InternalTraversal.dp_clauseelement),
+            ("_pre_columns_clause", InternalTraversal.dp_clauseelement),
+            ("_post_criteria_clause", InternalTraversal.dp_clauseelement),
+            ("_post_body_clause", InternalTraversal.dp_clauseelement),
         ]
         + HasCTE._has_ctes_traverse_internals
         + HasPrefixes._has_prefixes_traverse_internals
@@ -5248,6 +5378,11 @@ class Select(
         ]
 
         GenerativeSelect.__init__(self)
+
+    def _apply_syntax_extension_to_self(
+        self, extension: SyntaxExtension
+    ) -> None:
+        extension.apply_to_select(self)
 
     def _scalar_type(self) -> TypeEngine[Any]:
         if not self._raw_columns:
@@ -5645,8 +5780,9 @@ class Select(
             :attr:`_sql.Select.columns_clause_froms`
 
         """
+        compiler = self._default_compiler()
 
-        return self._compile_state_factory(self, None)._get_display_froms()
+        return self._compile_state_factory(self, compiler)._get_display_froms()
 
     @property
     @util.deprecated(
@@ -5747,7 +5883,7 @@ class Select(
         def replace(
             obj: Union[BinaryExpression[Any], ColumnClause[Any]],
             **kw: Any,
-        ) -> Optional[KeyedColumnElement[ColumnElement[Any]]]:
+        ) -> Optional[KeyedColumnElement[Any]]:
             if isinstance(obj, ColumnClause) and obj.table in new_froms:
                 newelem = new_froms[obj.table].corresponding_column(obj)
                 return newelem
@@ -6138,28 +6274,49 @@ class Select(
 
             SELECT DISTINCT user.id, user.name FROM user
 
-        The method also accepts an ``*expr`` parameter which produces the
-        PostgreSQL dialect-specific ``DISTINCT ON`` expression.  Using this
-        parameter on other backends which don't support this syntax will
-        raise an error.
+        The method also historically accepted an ``*expr`` parameter which
+        produced the PostgreSQL dialect-specific ``DISTINCT ON`` expression.
+        This is now replaced using the :func:`_postgresql.distinct_on`
+        extension::
+
+            from sqlalchemy import select
+            from sqlalchemy.dialects.postgresql import distinct_on
+
+            stmt = select(users_table).ext(distinct_on(users_table.c.name))
+
+        Using this parameter on other backends which don't support this
+        syntax will raise an error.
 
         :param \*expr: optional column expressions.  When present,
          the PostgreSQL dialect will render a ``DISTINCT ON (<expressions>)``
          construct.  A deprecation warning and/or :class:`_exc.CompileError`
          will be raised on other backends.
 
+         .. deprecated:: 2.1 Passing expressions to
+           :meth:`_sql.Select.distinct` is deprecated, use
+           :func:`_postgresql.distinct_on` instead.
+
          .. deprecated:: 1.4 Using \*expr in other dialects is deprecated
             and will raise :class:`_exc.CompileError` in a future version.
 
+        .. seealso::
+
+            :func:`_postgresql.distinct_on`
+
+            :meth:`_sql.HasSyntaxExtensions.ext`
         """
+        self._distinct = True
         if expr:
-            self._distinct = True
+            warn_deprecated(
+                "Passing expression to ``distinct`` to generate a "
+                "DISTINCT ON clause is deprecated. Use instead the "
+                "``postgresql.distinct_on`` function as an extension.",
+                "2.1",
+            )
             self._distinct_on = self._distinct_on + tuple(
                 coercions.expect(roles.ByOfRole, e, apply_propagate_attrs=self)
                 for e in expr
             )
-        else:
-            self._distinct = True
         return self
 
     @_generative
@@ -6415,6 +6572,9 @@ class Select(
     def _generate_fromclause_column_proxies(
         self,
         subquery: FromClause,
+        columns: ColumnCollection[str, KeyedColumnElement[Any]],
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
         *,
         proxy_compound_columns: Optional[
             Iterable[Sequence[ColumnElement[Any]]]
@@ -6432,6 +6592,8 @@ class Select(
                     name=required_label_name,
                     name_is_truncatable=True,
                     compound_select_cols=extra_cols,
+                    primary_key=primary_key,
+                    foreign_keys=foreign_keys,
                 )
                 for (
                     (
@@ -6457,6 +6619,8 @@ class Select(
                     key=proxy_key,
                     name=required_label_name,
                     name_is_truncatable=True,
+                    primary_key=primary_key,
+                    foreign_keys=foreign_keys,
                 )
                 for (
                     required_label_name,
@@ -6468,7 +6632,7 @@ class Select(
                 if is_column_element(c)
             ]
 
-        subquery._columns._populate_separate_keys(prox)
+        columns._populate_separate_keys(prox)
 
     def _needs_parens_for_grouping(self) -> bool:
         return self._has_row_limiting_clause or bool(
@@ -6495,8 +6659,8 @@ class Select(
             return SelectStatementGrouping(self)
 
     def union(
-        self, *other: _SelectStatementForCompoundArgument
-    ) -> CompoundSelect:
+        self, *other: _SelectStatementForCompoundArgument[Unpack[_Ts]]
+    ) -> CompoundSelect[Unpack[_Ts]]:
         r"""Return a SQL ``UNION`` of this select() construct against
         the given selectables provided as positional arguments.
 
@@ -6514,8 +6678,8 @@ class Select(
         return CompoundSelect._create_union(self, *other)
 
     def union_all(
-        self, *other: _SelectStatementForCompoundArgument
-    ) -> CompoundSelect:
+        self, *other: _SelectStatementForCompoundArgument[Unpack[_Ts]]
+    ) -> CompoundSelect[Unpack[_Ts]]:
         r"""Return a SQL ``UNION ALL`` of this select() construct against
         the given selectables provided as positional arguments.
 
@@ -6533,8 +6697,8 @@ class Select(
         return CompoundSelect._create_union_all(self, *other)
 
     def except_(
-        self, *other: _SelectStatementForCompoundArgument
-    ) -> CompoundSelect:
+        self, *other: _SelectStatementForCompoundArgument[Unpack[_Ts]]
+    ) -> CompoundSelect[Unpack[_Ts]]:
         r"""Return a SQL ``EXCEPT`` of this select() construct against
         the given selectable provided as positional arguments.
 
@@ -6549,8 +6713,8 @@ class Select(
         return CompoundSelect._create_except(self, *other)
 
     def except_all(
-        self, *other: _SelectStatementForCompoundArgument
-    ) -> CompoundSelect:
+        self, *other: _SelectStatementForCompoundArgument[Unpack[_Ts]]
+    ) -> CompoundSelect[Unpack[_Ts]]:
         r"""Return a SQL ``EXCEPT ALL`` of this select() construct against
         the given selectables provided as positional arguments.
 
@@ -6565,8 +6729,8 @@ class Select(
         return CompoundSelect._create_except_all(self, *other)
 
     def intersect(
-        self, *other: _SelectStatementForCompoundArgument
-    ) -> CompoundSelect:
+        self, *other: _SelectStatementForCompoundArgument[Unpack[_Ts]]
+    ) -> CompoundSelect[Unpack[_Ts]]:
         r"""Return a SQL ``INTERSECT`` of this select() construct against
         the given selectables provided as positional arguments.
 
@@ -6584,8 +6748,8 @@ class Select(
         return CompoundSelect._create_intersect(self, *other)
 
     def intersect_all(
-        self, *other: _SelectStatementForCompoundArgument
-    ) -> CompoundSelect:
+        self, *other: _SelectStatementForCompoundArgument[Unpack[_Ts]]
+    ) -> CompoundSelect[Unpack[_Ts]]:
         r"""Return a SQL ``INTERSECT ALL`` of this select() construct
         against the given selectables provided as positional arguments.
 
@@ -7027,6 +7191,9 @@ class TextualSelect(SelectBase, ExecutableReturnsRows, Generative):
     def _generate_fromclause_column_proxies(
         self,
         fromclause: FromClause,
+        columns: ColumnCollection[str, KeyedColumnElement[Any]],
+        primary_key: ColumnSet,
+        foreign_keys: Set[KeyedColumnElement[Any]],
         *,
         proxy_compound_columns: Optional[
             Iterable[Sequence[ColumnElement[Any]]]
@@ -7036,15 +7203,25 @@ class TextualSelect(SelectBase, ExecutableReturnsRows, Generative):
             assert isinstance(fromclause, Subquery)
 
         if proxy_compound_columns:
-            fromclause._columns._populate_separate_keys(
-                c._make_proxy(fromclause, compound_select_cols=extra_cols)
+            columns._populate_separate_keys(
+                c._make_proxy(
+                    fromclause,
+                    compound_select_cols=extra_cols,
+                    primary_key=primary_key,
+                    foreign_keys=foreign_keys,
+                )
                 for c, extra_cols in zip(
                     self.column_args, proxy_compound_columns
                 )
             )
         else:
-            fromclause._columns._populate_separate_keys(
-                c._make_proxy(fromclause) for c in self.column_args
+            columns._populate_separate_keys(
+                c._make_proxy(
+                    fromclause,
+                    primary_key=primary_key,
+                    foreign_keys=foreign_keys,
+                )
+                for c in self.column_args
             )
 
     def _scalar_type(self) -> Union[TypeEngine[Any], Any]:

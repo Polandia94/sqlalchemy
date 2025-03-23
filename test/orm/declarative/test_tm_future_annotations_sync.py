@@ -13,6 +13,7 @@ import datetime
 from decimal import Decimal
 import enum
 import inspect as _py_inspect
+import re
 import typing
 from typing import Any
 from typing import cast
@@ -67,6 +68,7 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import declared_attr
 from sqlalchemy.orm import deferred
 from sqlalchemy.orm import DynamicMapped
+from sqlalchemy.orm import exc as orm_exc
 from sqlalchemy.orm import foreign
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
@@ -613,19 +615,179 @@ class MappedColumnTest(fixtures.TestBase, testing.AssertsCompiledSQL):
                 id: Mapped[int] = mapped_column(primary_key=True)
                 data: Mapped[MyClass] = mapped_column()
 
-    def test_construct_lhs_sqlalchemy_type(self, decl_base):
-        with expect_raises_message(
-            sa_exc.ArgumentError,
-            "The type provided inside the 'data' attribute Mapped "
-            "annotation is the SQLAlchemy type .*BigInteger.*. Expected "
-            "a Python type instead",
-        ):
+    @testing.variation(
+        "argtype",
+        [
+            "type",
+            ("column", testing.requires.python310),
+            ("mapped_column", testing.requires.python310),
+            "column_class",
+            "ref_to_type",
+            ("ref_to_column", testing.requires.python310),
+        ],
+    )
+    def test_construct_lhs_sqlalchemy_type(self, decl_base, argtype):
+        """test for #12329.
 
-            class User(decl_base):
-                __tablename__ = "users"
+        of note here are all the different messages we have for when the
+        wrong thing is put into Mapped[], and in fact in #12329 we added
+        another one.
 
-                id: Mapped[int] = mapped_column(primary_key=True)
-                data: Mapped[BigInteger] = mapped_column()
+        This is a lot of different messages, but at the same time they
+        occur at different places in the interpretation of types.   If
+        we were to centralize all these messages, we'd still likely end up
+        doing distinct messages for each scenario, so instead we added
+        a new ArgumentError subclass MappedAnnotationError that provides
+        some commonality to all of these cases.
+
+
+        """
+        expect_future_annotations = "annotations" in globals()
+
+        if argtype.type:
+            with expect_raises_message(
+                orm_exc.MappedAnnotationError,
+                # properties.py -> _init_column_for_annotation, type is
+                # a SQL type
+                "The type provided inside the 'data' attribute Mapped "
+                "annotation is the SQLAlchemy type .*BigInteger.*. Expected "
+                "a Python type instead",
+            ):
+
+                class User(decl_base):
+                    __tablename__ = "users"
+
+                    id: Mapped[int] = mapped_column(primary_key=True)
+                    data: Mapped[BigInteger] = mapped_column()
+
+        elif argtype.column:
+            with expect_raises_message(
+                orm_exc.MappedAnnotationError,
+                # util.py -> _extract_mapped_subtype
+                (
+                    re.escape(
+                        "Could not interpret annotation "
+                        "Mapped[Column('q', BigInteger)]."
+                    )
+                    if expect_future_annotations
+                    # properties.py -> _init_column_for_annotation, object is
+                    # not a SQL type or a python type, it's just some object
+                    else re.escape(
+                        "The object provided inside the 'data' attribute "
+                        "Mapped annotation is not a Python type, it's the "
+                        "object Column('q', BigInteger(), table=None). "
+                        "Expected a Python type."
+                    )
+                ),
+            ):
+
+                class User(decl_base):
+                    __tablename__ = "users"
+
+                    id: Mapped[int] = mapped_column(primary_key=True)
+                    data: Mapped[Column("q", BigInteger)] = (  # noqa: F821
+                        mapped_column()
+                    )
+
+        elif argtype.mapped_column:
+            with expect_raises_message(
+                orm_exc.MappedAnnotationError,
+                # properties.py -> _init_column_for_annotation, object is
+                # not a SQL type or a python type, it's just some object
+                # interestingly, this raises at the same point for both
+                # future annotations mode and legacy annotations mode
+                r"The object provided inside the 'data' attribute "
+                "Mapped annotation is not a Python type, it's the object "
+                r"\<sqlalchemy.orm.properties.MappedColumn.*\>. "
+                "Expected a Python type.",
+            ):
+
+                class User(decl_base):
+                    __tablename__ = "users"
+
+                    id: Mapped[int] = mapped_column(primary_key=True)
+                    big_integer: Mapped[int] = mapped_column()
+                    data: Mapped[big_integer] = mapped_column()
+
+        elif argtype.column_class:
+            with expect_raises_message(
+                orm_exc.MappedAnnotationError,
+                # properties.py -> _init_column_for_annotation, type is not
+                # a SQL type
+                re.escape(
+                    "Could not locate SQLAlchemy Core type for Python type "
+                    "<class 'sqlalchemy.sql.schema.Column'> inside the "
+                    "'data' attribute Mapped annotation"
+                ),
+            ):
+
+                class User(decl_base):
+                    __tablename__ = "users"
+
+                    id: Mapped[int] = mapped_column(primary_key=True)
+                    data: Mapped[Column] = mapped_column()
+
+        elif argtype.ref_to_type:
+            mytype = BigInteger
+            with expect_raises_message(
+                orm_exc.MappedAnnotationError,
+                (
+                    # decl_base.py -> _exract_mappable_attributes
+                    re.escape(
+                        "Could not resolve all types within mapped "
+                        'annotation: "Mapped[mytype]"'
+                    )
+                    if expect_future_annotations
+                    # properties.py -> _init_column_for_annotation, type is
+                    # a SQL type
+                    else re.escape(
+                        "The type provided inside the 'data' attribute Mapped "
+                        "annotation is the SQLAlchemy type "
+                        "<class 'sqlalchemy.sql.sqltypes.BigInteger'>. "
+                        "Expected a Python type instead"
+                    )
+                ),
+            ):
+
+                class User(decl_base):
+                    __tablename__ = "users"
+
+                    id: Mapped[int] = mapped_column(primary_key=True)
+                    data: Mapped[mytype] = mapped_column()
+
+        elif argtype.ref_to_column:
+            mycol = Column("q", BigInteger)
+
+            with expect_raises_message(
+                orm_exc.MappedAnnotationError,
+                # decl_base.py -> _exract_mappable_attributes
+                (
+                    re.escape(
+                        "Could not resolve all types within mapped "
+                        'annotation: "Mapped[mycol]"'
+                    )
+                    if expect_future_annotations
+                    else
+                    # properties.py -> _init_column_for_annotation, object is
+                    # not a SQL type or a python type, it's just some object
+                    re.escape(
+                        "The object provided inside the 'data' attribute "
+                        "Mapped "
+                        "annotation is not a Python type, it's the object "
+                        "Column('q', BigInteger(), table=None). "
+                        "Expected a Python type."
+                    )
+                ),
+            ):
+
+                class User(decl_base):
+                    __tablename__ = "users"
+
+                    id: Mapped[int] = mapped_column(primary_key=True)
+                    data: Mapped[mycol] = mapped_column()
+
+        else:
+            argtype.fail()
 
     def test_construct_rhs_type_override_lhs(self, decl_base):
         class Element(decl_base):
@@ -852,6 +1014,7 @@ class MappedColumnTest(fixtures.TestBase, testing.AssertsCompiledSQL):
             "plain",
             "union",
             "union_604",
+            "null",
             "union_null",
             "union_null_604",
             "optional",
@@ -875,6 +1038,8 @@ class MappedColumnTest(fixtures.TestBase, testing.AssertsCompiledSQL):
             tat = TypeAliasType("tat", Union[str, int])
         elif option.union_604:
             tat = TypeAliasType("tat", str | int)
+        elif option.null:
+            tat = TypeAliasType("tat", None)
         elif option.union_null:
             tat = TypeAliasType("tat", Union[str, int, None])
         elif option.union_null_604:
@@ -915,33 +1080,18 @@ class MappedColumnTest(fixtures.TestBase, testing.AssertsCompiledSQL):
 
         if in_map.yes:
             col = declare()
-            length = 99
-        elif (
-            in_map.value
-            and "newtype" not in option.name
-            or option.optional
-            or option.plain
-        ):
-            with expect_deprecated(
-                "Matching the provided TypeAliasType 'tat' on its "
-                "resolved value without matching it in the "
-                "type_annotation_map is deprecated; add this type to the "
-                "type_annotation_map to allow it to match explicitly.",
-            ):
-                col = declare()
-            length = 99 if in_map.value else None
+            is_true(isinstance(col.type, String))
+            eq_(col.type.length, 99)
+            nullable = "null" in option.name or "optional" in option.name
+            eq_(col.nullable, nullable)
+
         else:
             with expect_raises_message(
-                exc.ArgumentError,
-                "Could not locate SQLAlchemy Core type for Python type",
+                orm_exc.MappedAnnotationError,
+                r"Could not locate SQLAlchemy Core type for Python type .*tat "
+                "inside the 'data' attribute Mapped annotation",
             ):
                 declare()
-            return
-
-        is_true(isinstance(col.type, String))
-        eq_(col.type.length, length)
-        nullable = "null" in option.name or "optional" in option.name
-        eq_(col.nullable, nullable)
 
     @testing.requires.python312
     def test_pep695_typealias_as_typemap_keys(
@@ -1043,16 +1193,12 @@ class MappedColumnTest(fixtures.TestBase, testing.AssertsCompiledSQL):
                     _StrPep695: Enum(enum.Enum),  # noqa: F821
                 }
             )
-            if type_.recursive:
-                with expect_deprecated(
-                    "Mapping recursive TypeAliasType '.+' that resolve to "
-                    "literal to generate an Enum is deprecated. SQLAlchemy "
-                    "2.1 will not support this use case. Please avoid using "
-                    "recursing TypeAliasType",
-                ):
-                    Foo = declare()
-            elif type_.literal:
+            if type_.literal:
                 Foo = declare()
+                col = Foo.__table__.c.status
+                is_true(isinstance(col.type, Enum))
+                eq_(col.type.enums, ["to-do", "in-progress", "done"])
+                is_(col.type.native_enum, False)
             else:
                 with expect_raises_message(
                     exc.ArgumentError,
@@ -1062,22 +1208,13 @@ class MappedColumnTest(fixtures.TestBase, testing.AssertsCompiledSQL):
                     "'b'.` are supported when generating Enums.",
                 ):
                     declare()
-                return
         else:
-            with expect_deprecated(
-                "Matching the provided TypeAliasType '.*' on its "
-                "resolved value without matching it in the "
-                "type_annotation_map is deprecated; add this type to the "
-                "type_annotation_map to allow it to match explicitly.",
+            with expect_raises_message(
+                exc.ArgumentError,
+                "Could not locate SQLAlchemy Core type for Python type "
+                ".+ inside the 'status' attribute Mapped annotation",
             ):
-                Foo = declare()
-        col = Foo.__table__.c.status
-        if in_map and not type_.not_literal:
-            is_true(isinstance(col.type, Enum))
-            eq_(col.type.enums, ["to-do", "in-progress", "done"])
-            is_(col.type.native_enum, False)
-        else:
-            is_true(isinstance(col.type, String))
+                declare()
 
     def test_typing_literal_identity(self, decl_base):
         """See issue #11820"""
@@ -1405,11 +1542,10 @@ class MappedColumnTest(fixtures.TestBase, testing.AssertsCompiledSQL):
             # <function NewType.<locals>.new_type at 0x...>
             text = ".*NewType.*"
 
-        with expect_deprecated(
-            f"Matching the provided NewType '{text}' on its "
-            "resolved value without matching it in the "
-            "type_annotation_map is deprecated; add this type to the "
-            "type_annotation_map to allow it to match explicitly.",
+        with expect_raises_message(
+            orm_exc.MappedAnnotationError,
+            "Could not locate SQLAlchemy Core type for Python type "
+            f"{text} inside the 'data_one' attribute Mapped annotation",
         ):
 
             class MyClass(decl_base):
@@ -1417,8 +1553,6 @@ class MappedColumnTest(fixtures.TestBase, testing.AssertsCompiledSQL):
 
                 id: Mapped[int] = mapped_column(primary_key=True)
                 data_one: Mapped[str50]
-
-        is_true(isinstance(MyClass.data_one.type, String))
 
     def test_extract_base_type_from_pep593(
         self, decl_base: Type[DeclarativeBase]
@@ -2380,7 +2514,8 @@ class MappedColumnTest(fixtures.TestBase, testing.AssertsCompiledSQL):
         )
 
         with expect_raises_message(
-            sa_exc.ArgumentError, "Could not locate SQLAlchemy Core type"
+            orm_exc.MappedAnnotationError,
+            "Could not locate SQLAlchemy Core type",
         ):
 
             class MyClass(Base):
