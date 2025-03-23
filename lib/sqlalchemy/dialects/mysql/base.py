@@ -1499,33 +1499,33 @@ class MySQLCompiler(compiler.SQLCompiler):
         for column in (col for col in cols if col.key in on_duplicate_update):
             val = on_duplicate_update[column.key]
 
-                def replace(
-                    element: ExternallyTraversible, **kw: Any
-                ) -> Optional[ExternallyTraversible]:
-                    if (
-                        isinstance(element, elements.BindParameter)
-                        and element.type._isnull
-                    ):
-                        element = element._clone()
-                        element.type = column.type
-                        return element
-                    elif (
-                        isinstance(element, elements.ColumnClause)
-                        and element.table is on_duplicate.inserted_alias
-                    ):
-                        if requires_mysql8_alias:
-                            column_literal_clause = (
-                                f"{_on_dup_alias_name}."
-                                f"{self.preparer.quote(element.name)}"
-                            )
-                        else:
-                            column_literal_clause = (
-                                f"VALUES({self.preparer.quote(element.name)})"
-                            )
-                        return literal_column(column_literal_clause)
+            def replace(
+                element: ExternallyTraversible, **kw: Any
+            ) -> Optional[ExternallyTraversible]:
+                if (
+                    isinstance(element, elements.BindParameter)
+                    and element.type._isnull
+                ):
+                    element = element._clone()
+                    element.type = column.type
+                    return element
+                elif (
+                    isinstance(element, elements.ColumnClause)
+                    and element.table is on_duplicate.inserted_alias
+                ):
+                    if requires_mysql8_alias:
+                        column_literal_clause = (
+                            f"{_on_dup_alias_name}."
+                            f"{self.preparer.quote(element.name)}"
+                        )
                     else:
-                        # element is not replaced
-                        return None
+                        column_literal_clause = (
+                            f"VALUES({self.preparer.quote(element.name)})"
+                        )
+                    return literal_column(column_literal_clause)
+                else:
+                    # element is not replaced
+                    return None
 
                 # val: visitors.ExternallyTraversible
             val = visitors.replacement_traverse(val, {}, replace)
