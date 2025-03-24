@@ -34,6 +34,7 @@ import re
 from types import ModuleType
 from typing import Any
 from typing import Optional
+from typing import Sequence
 from typing import TYPE_CHECKING
 from uuid import UUID as _python_UUID
 
@@ -186,7 +187,7 @@ class MySQLDialect_mariadbconnector(MySQLDialect):
         else:
             return False
 
-    def create_connect_args(self, url: "URL") -> "ConnectArgsType":
+    def create_connect_args(self, url: "URL") -> ConnectArgsType:
         opts = url.translate_connect_args()
         opts.update(url.query)
 
@@ -236,8 +237,8 @@ class MySQLDialect_mariadbconnector(MySQLDialect):
         return "utf8mb4"
 
     def get_isolation_level_values(
-        self, dbapi_conn: "DBAPIConnection"
-    ) -> tuple["IsolationLevel", ...]:
+        self, dbapi_conn: DBAPIConnection
+    ) -> Sequence[IsolationLevel]:
         return (
             "SERIALIZABLE",
             "READ UNCOMMITTED",
@@ -247,7 +248,7 @@ class MySQLDialect_mariadbconnector(MySQLDialect):
         )
 
     def set_isolation_level(
-        self, dbapi_connection: "DBAPIConnection", level: "IsolationLevel"
+        self, dbapi_connection: DBAPIConnection, level: IsolationLevel
     ) -> None:
         if level == "AUTOCOMMIT":
             dbapi_connection.autocommit = True
@@ -255,7 +256,7 @@ class MySQLDialect_mariadbconnector(MySQLDialect):
             dbapi_connection.autocommit = False
             super().set_isolation_level(dbapi_connection, level)
 
-    def do_begin_twophase(self, connection: "Connection", xid: Any) -> None:
+    def do_begin_twophase(self, connection: Connection, xid: Any) -> None:
         connection.execute(
             sql.text("XA BEGIN :xid").bindparams(
                 sql.bindparam("xid", xid, literal_execute=True)

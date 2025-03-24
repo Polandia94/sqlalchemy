@@ -96,7 +96,7 @@ class AsyncAdapt_asyncmy_connection(AsyncAdapt_dbapi_connection):
     async def _do_ping(self) -> None:
         try:
             async with self._execute_mutex:
-                return await self._connection.ping(False)  # type: ignore[no-any-return]  # noqa: E501
+                await self._connection.ping(False)
         except Exception as error:
             self._handle_exception(error)
 
@@ -184,7 +184,7 @@ class MySQLDialect_asyncmy(MySQLDialect_pymysql):
     # _translate_args should not be defined here, is only for super class.
     def create_connect_args(
         self, url: URL, _translate_args: Any = None
-    ) -> "ConnectArgsType":
+    ) -> ConnectArgsType:
         return super().create_connect_args(
             url, _translate_args=dict(username="user", database="db")
         )

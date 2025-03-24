@@ -1152,8 +1152,8 @@ if TYPE_CHECKING:
     from typing import Sequence
 
     from ...dialects.mysql import expression
-    from ...dialects.mysql.dml import OnDuplicateClause
     from ...dialects.mysql.dml import DMLLimitClause
+    from ...dialects.mysql.dml import OnDuplicateClause
     from ...engine.base import Connection
     from ...engine.cursor import CursorResult
     from ...engine.interfaces import DBAPIConnection
@@ -1527,8 +1527,6 @@ class MySQLCompiler(compiler.SQLCompiler):
                 else:
                     # element is not replaced
                     return None
-
-                # val: visitors.ExternallyTraversible
 
             val = visitors.replacement_traverse(val, {}, replace)
             value_text = self.process(val.self_group(), use_schema=False)
@@ -2797,8 +2795,8 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         self._set_mariadb(is_mariadb, ())
 
     def get_isolation_level_values(
-        self, dbapi_conn: "DBAPIConnection"
-    ) -> Sequence["IsolationLevel"]:
+        self, dbapi_conn: DBAPIConnection
+    ) -> Sequence[IsolationLevel]:
         return (
             "SERIALIZABLE",
             "READ UNCOMMITTED",
@@ -2807,7 +2805,7 @@ class MySQLDialect(default.DefaultDialect, log.Identified):
         )
 
     def set_isolation_level(
-        self, dbapi_connection: "DBAPIConnection", level: IsolationLevel
+        self, dbapi_connection: DBAPIConnection, level: IsolationLevel
     ) -> None:
         cursor = dbapi_connection.cursor()
         cursor.execute(f"SET SESSION TRANSACTION ISOLATION LEVEL {level}")

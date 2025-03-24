@@ -85,7 +85,7 @@ class AsyncAdapt_aiomysql_connection(AsyncAdapt_dbapi_connection):
 
     def ping(self, reconnect: bool) -> None:
         assert not reconnect
-        return await_(self._connection.ping(reconnect))  # type: ignore[no-any-return]  # noqa: E501
+        await_(self._connection.ping(reconnect))
 
     def character_set_name(self) -> Optional[str]:
         return self._connection.character_set_name()  # type: ignore[no-any-return]  # noqa: E501
@@ -103,8 +103,8 @@ class AsyncAdapt_aiomysql_connection(AsyncAdapt_dbapi_connection):
 
 class AsyncAdapt_aiomysql_dbapi:
     def __init__(self, aiomysql: ModuleType, pymysql: ModuleType):
-        self.aiomysql: ModuleType = aiomysql
-        self.pymysql: ModuleType = pymysql
+        self.aiomysql = aiomysql
+        self.pymysql = pymysql
         self.paramstyle = "format"
         self._init_dbapi_attributes()
         self.Cursor, self.SSCursor = self._init_cursors_subclasses()
@@ -180,7 +180,7 @@ class MySQLDialect_aiomysql(MySQLDialect_pymysql):
     # _translate_args should not be defined here, is only for super class.
     def create_connect_args(
         self, url: URL, _translate_args: Any = None
-    ) -> "ConnectArgsType":
+    ) -> ConnectArgsType:
         return super().create_connect_args(
             url, _translate_args=dict(username="user", database="db")
         )

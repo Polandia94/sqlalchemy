@@ -124,7 +124,7 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
 
     def create_connect_args(
         self, url: URL, _translate_args: Optional[dict[str, Any]] = None
-    ) -> "ConnectArgsType":
+    ) -> ConnectArgsType:
         if _translate_args is None:
             _translate_args = dict(username="user")
         return super().create_connect_args(

@@ -52,6 +52,7 @@ from typing import Any
 from typing import Callable
 from typing import Optional
 from typing import TYPE_CHECKING
+from typing import Union
 
 from .base import MySQLDialect
 from .base import MySQLExecutionContext
@@ -73,7 +74,7 @@ class _pyodbcTIME(TIME):
     def result_processor(
         self, dialect: Dialect, coltype: object
     ) -> "_ResultProcessorType[datetime.time]":
-        def process(value: Any) -> "datetime.time | None":
+        def process(value: Any) -> Union[datetime.time, None]:
             # pyodbc returns a datetime.time object; no need to convert
             return value  # type: ignore[no-any-return]
 

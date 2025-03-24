@@ -197,7 +197,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
 
     def create_connect_args(
         self, url: URL, _translate_args: Optional[dict[str, Any]] = None
-    ) -> "ConnectArgsType":
+    ) -> ConnectArgsType:
         if _translate_args is None:
             _translate_args = dict(
                 database="db", username="user", password="passwd"
@@ -284,8 +284,8 @@ class MySQLDialect_mysqldb(MySQLDialect):
             return cset_name()
 
     def get_isolation_level_values(
-        self, dbapi_conn: "DBAPIConnection"
-    ) -> tuple["IsolationLevel", ...]:
+        self, dbapi_conn: DBAPIConnection
+    ) -> tuple[IsolationLevel, ...]:
         return (
             "SERIALIZABLE",
             "READ UNCOMMITTED",
@@ -295,7 +295,7 @@ class MySQLDialect_mysqldb(MySQLDialect):
         )
 
     def set_isolation_level(  # type: ignore[override]
-        self, dbapi_connection: "MySQLdb.Connection", level: "IsolationLevel"
+        self, dbapi_connection: MySQLdb.Connection, level: IsolationLevel
     ) -> None:
         if level == "AUTOCOMMIT":
             dbapi_connection.autocommit(True)

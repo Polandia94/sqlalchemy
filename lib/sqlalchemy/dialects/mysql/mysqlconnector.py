@@ -172,7 +172,7 @@ class MySQLDialect_mysqlconnector(MySQLDialect):
         dbapi_connection.ping(False)
         return True
 
-    def create_connect_args(self, url: "URL") -> "ConnectArgsType":
+    def create_connect_args(self, url: "URL") -> ConnectArgsType:
         opts = url.translate_connect_args(username="user")
 
         opts.update(url.query)
@@ -267,7 +267,7 @@ class MySQLDialect_mysqlconnector(MySQLDialect):
 
     def get_isolation_level_values(
         self, dbapi_connection: DBAPIConnection
-    ) -> Sequence["IsolationLevel"]:
+    ) -> Sequence[IsolationLevel]:
         return (
             "SERIALIZABLE",
             "READ UNCOMMITTED",
