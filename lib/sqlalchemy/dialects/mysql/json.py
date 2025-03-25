@@ -45,13 +45,29 @@ class _FormatTypeMixin:
     def _format_value(self, value: Any) -> str:
         raise NotImplementedError()
 
-    def bind_processor(self, dialect: Dialect) -> "_BindProcessorType[Any]":
-        raise NotImplementedError()
+    def bind_processor(self, dialect: Dialect) -> _BindProcessorType[Any]:
+        super_proc = self.string_bind_processor(dialect)  # type: ignore[attr-defined]  # noqa: E501
+
+        def process(value: Any) -> Any:
+            value = self._format_value(value)
+            if super_proc:
+                value = super_proc(value)
+            return value
+
+        return process
 
     def literal_processor(
         self, dialect: Dialect
-    ) -> "_LiteralProcessorType[Any]":
-        raise NotImplementedError()
+    ) -> _LiteralProcessorType[Any]:
+        super_proc = self.string_literal_processor(dialect)  # type: ignore[attr-defined]  # noqa: E501
+
+        def process(value: Any) -> str:
+            value = self._format_value(value)
+            if super_proc:
+                value = super_proc(value)
+            return value  # type: ignore[no-any-return]
+
+        return process
 
 
 class JSONIndexType(_FormatTypeMixin, sqltypes.JSON.JSONIndexType):

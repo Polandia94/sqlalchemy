@@ -44,7 +44,7 @@ class ReflectedState:
 
 
 @log.class_logger
-class MySQLTableDefinitionParser(log.Identified):
+class MySQLTableDefinitionParser:  # type: ignore[type-var]
     """Parses the results of a SHOW CREATE TABLE statement."""
 
     def __init__(

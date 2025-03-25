@@ -167,12 +167,12 @@ class MySQLDialect_mysqlconnector(MySQLDialect):
         return connector
 
     def do_ping(
-        self, dbapi_connection: "dbapi_connection"  # type:ignore[override]
+        self, dbapi_connection: dbapi_connection  # type:ignore[override]
     ) -> bool:
         dbapi_connection.ping(False)
         return True
 
-    def create_connect_args(self, url: "URL") -> ConnectArgsType:
+    def create_connect_args(self, url: URL) -> ConnectArgsType:
         opts = url.translate_connect_args(username="user")
 
         opts.update(url.query)
