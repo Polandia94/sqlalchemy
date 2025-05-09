@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from .base import Engine
     from .cursor import CursorResult
     from .url import URL
+    from ..connectors.asyncio import AsyncIODBAPIConnection
     from ..event import _ListenerFnType
     from ..event import dispatcher
     from ..exc import StatementError
@@ -71,6 +72,7 @@ if TYPE_CHECKING:
     from ..sql.type_api import _TypeMemoDict
     from ..sql.type_api import TypeEngine
     from ..util.langhelpers import generic_fn_descriptor
+    
 
 ConnectArgsType = Tuple[Sequence[str], MutableMapping[str, Any]]
 
@@ -3357,7 +3359,7 @@ class AdaptedConnection:
 
     __slots__ = ("_connection",)
 
-    _connection: Any
+    _connection: AsyncIODBAPIConnection
 
     @property
     def driver_connection(self) -> Any:

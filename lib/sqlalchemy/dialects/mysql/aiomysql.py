@@ -33,6 +33,7 @@ from __future__ import annotations
 
 from types import ModuleType
 from typing import Any
+from typing import cast
 from typing import Optional
 from typing import TYPE_CHECKING
 
@@ -50,7 +51,9 @@ if TYPE_CHECKING:
     from aiomysql.pool import Pool as AiomysqlPool
 
     from ...connectors.asyncio import AsyncIODBAPIConnection
+    from ...engine.interfaces import AdaptedConnection
     from ...engine.interfaces import ConnectArgsType
+    from ...engine.interfaces import DBAPIConnection
     from ...engine.url import URL
 
 
@@ -81,24 +84,23 @@ class AsyncAdapt_aiomysql_connection(AsyncAdapt_dbapi_connection):
 
     _cursor_cls = AsyncAdapt_aiomysql_cursor
     _ss_cursor_cls = AsyncAdapt_aiomysql_ss_cursor
-    _connection: AiomysqlConnection
 
     def ping(self, reconnect: bool) -> None:
         assert not reconnect
-        await_(self._connection.ping(reconnect))
+        await_(cast(AiomysqlConnection, self._connection).ping(reconnect))
 
     def character_set_name(self) -> Optional[str]:
-        return self._connection.character_set_name()  # type: ignore[no-any-return]  # noqa: E501
+        return cast(AiomysqlConnection, self._connection).character_set_name()  # type: ignore[no-any-return]  # noqa: E501
 
     def autocommit(self, value: Any) -> None:
-        await_(self._connection.autocommit(value))
+        await_(cast(AiomysqlConnection, self._connection).autocommit(value))
 
     def terminate(self) -> None:
         # it's not awaitable.
-        self._connection.close()
+        cast(AiomysqlConnection, self._connection).close()
 
     def close(self) -> None:
-        await_(self._connection.ensure_closed())
+        await_(cast(AiomysqlConnection, self._connection).ensure_closed())
 
 
 class AsyncAdapt_aiomysql_dbapi:
@@ -174,8 +176,8 @@ class MySQLDialect_aiomysql(MySQLDialect_pymysql):
             __import__("aiomysql"), __import__("pymysql")
         )
 
-    def do_terminate(self, dbapi_connection: AiomysqlPool) -> None:
-        dbapi_connection.terminate()
+    def do_terminate(self, dbapi_connection: DBAPIConnection) -> None:
+        cast(AiomysqlPool, dbapi_connection).terminate()
 
     # _translate_args should not be defined here, is only for super class.
     def create_connect_args(self, url: URL) -> ConnectArgsType:  # type: ignore[override]  # noqa: E501
@@ -198,8 +200,8 @@ class MySQLDialect_aiomysql(MySQLDialect_pymysql):
         return CLIENT.FOUND_ROWS
 
     def get_driver_connection(  # type: ignore[override]
-        self, connection: AsyncAdapt_aiomysql_connection
-    ) -> AiomysqlConnection:
+        self, connection: AdaptedConnection
+    ) -> AsyncIODBAPIConnection:
         return connection._connection
 
 

@@ -180,8 +180,8 @@ class MySQLDialect_mysqldb(MySQLDialect):
 
         return on_connect
 
-    def do_ping(self, dbapi_connection: "MySQLdb.Connection") -> Literal[True]:  # type: ignore[override] # NOQA: E501
-        dbapi_connection.ping()  # type: ignore[no-untyped-call]
+    def do_ping(self, dbapi_connection: DBAPIConnection) -> Literal[True]:
+        dbapi_connection.ping()  # type: ignore[attr-defined]
         return True
 
     def do_executemany(
