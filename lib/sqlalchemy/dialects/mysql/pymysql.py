@@ -52,6 +52,7 @@ from __future__ import annotations
 
 from types import ModuleType
 from typing import Any
+from typing import cast
 from typing import Literal
 from typing import Optional
 from typing import TYPE_CHECKING
@@ -63,6 +64,7 @@ if TYPE_CHECKING:
     import pymysql
 
     from ...engine.interfaces import ConnectArgsType
+    from ...engine.interfaces import DBAPIConnection
     from ...engine.url import URL
 
 
@@ -71,7 +73,6 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
     supports_statement_cache = True
 
     description_encoding = None
-    dbapi: "pymysql"  # type: ignore[valid-type]
 
     @langhelpers.memoized_property
     def supports_server_side_cursors(self) -> bool:
@@ -114,11 +115,11 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
                     not insp.defaults or insp.defaults[0] is not False
                 )
 
-    def do_ping(self, dbapi_connection: "pymysql.Connection") -> Literal[True]:  # type: ignore # noqa: E501
+    def do_ping(self, dbapi_connection: DBAPIConnection) -> Literal[True]:
         if self._send_false_to_ping:
-            dbapi_connection.ping(False)
+            cast("pymysql.Connection[Any]", dbapi_connection).ping(False)
         else:
-            dbapi_connection.ping()
+            cast("pymysql.Connection[Any]", dbapi_connection).ping()
 
         return True
 
@@ -136,7 +137,7 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
     ) -> bool:
         if super().is_disconnect(e, connection, cursor):
             return True
-        elif isinstance(e, self.dbapi.Error):  # type: ignore[attr-defined]
+        elif isinstance(e, self.dbapi.Error):  # type: ignore[union-attr]
             str_e = str(e).lower()
             return (
                 "already closed" in str_e or "connection was killed" in str_e
