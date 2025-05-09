@@ -72,7 +72,7 @@ if TYPE_CHECKING:
     from ..sql.type_api import _TypeMemoDict
     from ..sql.type_api import TypeEngine
     from ..util.langhelpers import generic_fn_descriptor
-    
+
 
 ConnectArgsType = Tuple[Sequence[str], MutableMapping[str, Any]]
 
